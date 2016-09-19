@@ -1,0 +1,6 @@
+{'Family-model': 'GenuineIntel-6-3F', 'EventType': 'core', 'Version': 'V15', 'Filename': '/HSX/HaswellX_core_V15.json'}
+{'Family-model': 'GenuineIntel-6-3F', 'EventType': 'offcore', 'Version': 'V15', 'Filename': '/HSX/HaswellX_matrix_V15.json'}
+{'Family-model': 'GenuineIntel-6-3F', 'EventType': 'uncore', 'Version': 'V15', 'Filename': '/HSX/HaswellX_uncore_V15.json'}
+Event to query (empty enter to quit):MEM_LOAD_UOPS_RETIRED.L1_MISS:Retired load uops misses in L1 cache as data sources.
+cpu/umask=0x08,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L1_MISS/
+Event to query (empty enter to quit):
