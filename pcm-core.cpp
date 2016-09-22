@@ -18,16 +18,9 @@
   */
 #define HACK_TO_REMOVE_DUPLICATE_ERROR
 #include <iostream>
-#ifdef _MSC_VER
-#pragma warning(disable : 4996) // for sprintf
-#define strtok_r strtok_s
-#include <windows.h>
-#include "../PCM_Win/windriver.h"
-#else
 #include <unistd.h>
 #include <signal.h>
 #include <sys/time.h> // for gettimeofday()
-#endif
 #include <math.h>
 #include <iomanip>
 #include <stdlib.h>
@@ -38,15 +31,13 @@
 #include <bitset>
 #include "cpucounters.h"
 #include "utils.h"
-#ifdef _MSC_VER
-#include "freegetopt/getopt.h"
-#endif
 
 #include <vector>
 #define PCM_DELAY_DEFAULT 1.0 // in seconds
 #define PCM_DELAY_MIN 0.015 // 15 milliseconds is practical on most modern CPUs
 #define PCM_CALIBRATION_INTERVAL 50 // calibrate clock only every 50th iteration
 #define MAX_CORES 4096
+#define MAX_EVENTS 4
 
 using namespace std;
 
@@ -56,7 +47,10 @@ struct CoreEvent
 	uint64 value;
 	uint64 msr_value;
 	char * description;
-} events[4];
+} events[MAX_EVENTS];
+
+EventSelectRegister regs[MAX_EVENTS];
+
 
 void print_usage(const string progname)
 {
@@ -80,7 +74,7 @@ void print_usage(const string progname)
 }
 
 	template <class StateType>
-void print_custom_stats(const StateType & BeforeState, const StateType & AfterState ,bool csv, uint64 txn_rate)
+void print_custom_stats(const StateType &BeforeState, const StateType &AfterState, bool csv, uint64 txn_rate)
 {
 	uint64 cycles = getCycles(BeforeState, AfterState);
 	uint64 instr = getInstructionsRetired(BeforeState, AfterState);
@@ -102,16 +96,21 @@ void print_custom_stats(const StateType & BeforeState, const StateType & AfterSt
 		cout << double(instr)/double(txn_rate) << ",";
 		cout << double(cycles)/double(txn_rate) << ",";
 	}
-	for(int i=0;i<4;++i)
+
+	for (int i = 0; i < MAX_EVENTS; ++i)
+	{
 		if(!csv) {
 			cout << setw(10);
 			if(txn_rate == 1)
 				cout << unit_format(getNumberOfCustomEvents(i, BeforeState, AfterState));
 			else
 				cout << double(getNumberOfCustomEvents(i, BeforeState, AfterState))/double(txn_rate);
+		} else {
+			cout << double(getNumberOfCustomEvents(i, BeforeState, AfterState)) / double(txn_rate);
+			if (i < MAX_EVENTS - 1)
+				cout << ",";
 		}
-		else
-			cout << double(getNumberOfCustomEvents(i, BeforeState, AfterState))/double(txn_rate)<<",";
+	}
 
 	cout << endl;
 }
@@ -129,12 +128,8 @@ void build_event(const char * argv, EventSelectRegister *reg, int idx)
 	reg->fields.enable = 1;
 
 	memset(name,0,EVENT_SIZE);
-	strncpy(name,argv,EVENT_SIZE-1); 
-	/*
-	   uint64 apic_int : 1;
+	strncpy(name,argv,EVENT_SIZE-1);
 
-	   offcore_rsp=2,period=10000
-	   */
 	for (j = 1, str1 = name; ; j++, str1 = NULL) {
 		token = strtok_r(str1, "/", &saveptr1);
 		if (token == NULL)
@@ -211,7 +206,6 @@ int main(int argc, char * argv[])
 	uint64 txn_rate = 1;
 	int calibrated = PCM_CALIBRATION_INTERVAL - 2; // keeps track is the clock calibration needed
 	string program = string(argv[0]);
-	EventSelectRegister regs[4];
 	PCM::ExtendedCustomCoreEventDescription conf;
 	bool show_partial_core_output = false;
 	std::bitset<MAX_CORES> ycores;
@@ -220,7 +214,7 @@ int main(int argc, char * argv[])
 	conf.nGPCounters = 4;
 	conf.gpCounterCfg = regs;
 
-	PCM * m = PCM::getInstance();
+	PCM *m = PCM::getInstance();
 
 	if(argc > 1) do
 	{
@@ -387,7 +381,7 @@ int main(int argc, char * argv[])
 	if (csv) {
 		if( delay<=0.0 ) delay = PCM_DELAY_DEFAULT;
 	} else {
-		// for non-CSV mode delay < 1.0 does not make a lot of practical sense: 
+		// for non-CSV mode delay < 1.0 does not make a lot of practical sense:
 		// hard to read from the screen, or
 		// in case delay is not provided in command line => set default
 		if( ((delay<1.0) && (delay>0.0)) || (delay<=0.0) ) delay = PCM_DELAY_DEFAULT;
@@ -396,7 +390,7 @@ int main(int argc, char * argv[])
 	cerr << "Update every "<<delay<<" seconds"<< endl;
 
 	std::cout.precision(2);
-	std::cout << std::fixed; 
+	std::cout << std::fixed;
 
 	BeforeTime = m->getTickCount();
 	m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
@@ -410,11 +404,7 @@ int main(int argc, char * argv[])
 		if(!csv) cout << std::flush;
 		int delay_ms = int(delay * 1000);
 		int calibrated_delay_ms = delay_ms;
-#ifdef _MSC_VER
-		// compensate slow Windows console output
-		if(AfterTime) delay_ms -= (int)(m->getTickCount() - BeforeTime);
-		if(delay_ms < 0) delay_ms = 0;
-#else
+
 		// compensation of delay on Linux/UNIX
 		// to make the samling interval as monotone as possible
 		struct timeval start_ts, end_ts;
@@ -423,16 +413,14 @@ int main(int argc, char * argv[])
 			diff_usec = (end_ts.tv_sec-start_ts.tv_sec)*1000000.0+(end_ts.tv_usec-start_ts.tv_usec);
 			calibrated_delay_ms = delay_ms - diff_usec/1000.0;
 		}
-#endif
 
 		MySleepMs(calibrated_delay_ms);
 
-#ifndef _MSC_VER
 		calibrated = (calibrated + 1) % PCM_CALIBRATION_INTERVAL;
 		if(calibrated == 0) {
 			gettimeofday(&start_ts, NULL);
 		}
-#endif
+
 		AfterTime = m->getTickCount();
 		m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
 
