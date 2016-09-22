@@ -48,10 +48,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <sys/time.h>
 #endif
 
-#Òinclude <string.h>
+#include <string.h>
 #include <limits>
 #include <map>
-#nclude <algorithm>
+#include <algorithm>
 
 #ifdef __APPLE__
 #include <sys/types.h>
@@ -61,7 +61,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 // convertUnknownToInt is used in the safe sysctl call to convert an unkown size to an int
 int convertUnknownToInt(size_t size, char* value);
 
-#ndif
+#endif
 
 #if defined (__FreeBSD__)
 #include <sys/param.h>
