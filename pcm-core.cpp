@@ -33,6 +33,9 @@
 #include "utils.h"
 
 #include <vector>
+#include <boost/program_options.hpp>
+#include <glib.h>
+
 #define PCM_DELAY_DEFAULT 1.0 // in seconds
 #define PCM_DELAY_MIN 0.015 // 15 milliseconds is practical on most modern CPUs
 #define PCM_CALIBRATION_INTERVAL 50 // calibrate clock only every 50th iteration
@@ -40,6 +43,7 @@
 #define MAX_EVENTS 4
 
 using namespace std;
+namespace po = boost::program_options;
 
 struct CoreEvent
 {
@@ -52,26 +56,6 @@ struct CoreEvent
 EventSelectRegister regs[MAX_EVENTS];
 
 
-void print_usage(const string progname)
-{
-	cerr << endl << " Usage: " << endl << " " << progname
-		<< " --help | [delay] [options] [-- external_program [external_program_options]]" << endl;
-	cerr << "   <delay>                               => time interval to sample performance counters." << endl;
-	cerr << "                                            If not specified, or 0, with external program given" << endl;
-	cerr << "                                            will read counters only after external program finishes" << endl;
-	cerr << " Supported <options> are: " << endl;
-	cerr << "  -h    | --help      | /h               => print this help and exit" << endl;
-	cerr << "  -c    | /c                             => print CPU Model name and exit (used for pmu-query.py)" << endl;
-	cerr << "  -csv[=file.csv]     | /csv[=file.csv]  => output compact CSV format to screen or" << endl
-		<< "                                            to a file, in case filename is provided" << endl;
-	cerr << "  [-e event1] [-e event2] [-e event3] .. => optional list of custom events to monitor (up to 4)." << endl;
-	cerr << "  -yc   | --yescores  | /yc              => enable specific cores to output" << endl;
-	cerr << " Examples:" << endl;
-	cerr << "  " << progname << " 1                   => print counters every second without core and socket output" << endl;
-	cerr << "  " << progname << " 0.5 -csv=test.log   => twice a second save counter values to test.log in CSV format" << endl;
-	cerr << "  " << progname << " /csv 5 2>/dev/null  => one sampe every 5 seconds, and discard all diagnostic output" << endl;
-	cerr << endl;
-}
 
 	template <class StateType>
 void print_custom_stats(const StateType &BeforeState, const StateType &AfterState, bool csv, uint64 txn_rate)
@@ -198,8 +182,6 @@ int main(int argc, char * argv[])
 	cerr << endl;
 
 	double delay = -1.0;
-	char *sysCmd = NULL;
-	char **sysArgv = NULL;
 	uint32 cur_event = 0;
 	bool csv = false;
 	long diff_usec = 0; // deviation of clock is useconds between measurements
@@ -216,124 +198,112 @@ int main(int argc, char * argv[])
 
 	PCM *m = PCM::getInstance();
 
-	if(argc > 1) do
-	{
-		argv++;
-		argc--;
-		if (strncmp(*argv, "--help", 6) == 0 ||
-				strncmp(*argv, "-h", 2) == 0 ||
-				strncmp(*argv, "/h", 2) == 0)
-		{
-			print_usage(program);
+	po::options_description desc("Allowed options");
+	desc.add_options()
+		("help,h", "print usage message")
+		("csv", po::value<string>(), "pathname for output")
+		("delay,d", po::value<double>(), "time interval to sample performance counters.")
+		("model", "print CPU Model name and exit (used for pmu-query.py)")
+		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
+		("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
+		("run,r", po::value<string>(), "file with lines like: <coreaffinity> <command>")
+		("max-intervals", po::value<size_t>()->default_value(numeric_limits<size_t>::max()), "stop after this number of intervals.")
+		;
+
+	// Parse the options without storing them in a map.
+	po::parsed_options parsed_options = po::command_line_parser(argc, argv)
+		.options(desc)
+		.run();
+
+	po::variables_map vm;
+	po::store(parsed_options, vm);
+	po::notify(vm);
+
+	if (vm.count("help")) {
+		cout << desc << "\n";
+		return 0;
+	}
+
+	if (vm.count("csv")) {
+		csv = true;
+		m->setOutput(vm["csv"].as<string>());
+	}
+
+	if (vm.count("delay")) {
+		delay = vm["delay"].as<double>();
+	}
+
+	if (vm.count("model")) {
+		cout << m->getCPUFamilyModelString() << endl;
+		exit(EXIT_SUCCESS);
+	}
+
+	if (vm.count("cores")) {
+		show_partial_core_output = true;
+		for (const auto &core_id : vm["cores"].as<vector<int>>()) {
+			if(core_id > MAX_CORES) {
+				cerr << "Core ID:" << core_id << " exceed maximum range " << MAX_CORES << ", program abort" << endl;
+				exit(EXIT_FAILURE);
+			}
+			ycores.set(core_id, true);
+		}
+
+		if(m->getNumCores() > MAX_CORES) {
+			cerr << "Error: --cores option is enabled, but #define MAX_CORES " << MAX_CORES << " is less than m->getNumCores() = " << m->getNumCores() << endl;
+			cerr << "There is a potential to crash the system. Please increase MAX_CORES to at least " << m->getNumCores() << " and re-enable this option." << endl;
 			exit(EXIT_FAILURE);
 		}
-		else if (strncmp(*argv, "-csv",4) == 0 ||
-				strncmp(*argv, "/csv",4) == 0)
-		{
-			csv = true;
-			string cmd = string(*argv);
-			size_t found = cmd.find('=',4);
-			if (found != string::npos) {
-				string filename = cmd.substr(found+1);
-				if (!filename.empty()) {
-					m->setOutput(filename);
-				}
-			}
-			continue;
-		}
-		else if (strncmp(*argv, "-c",2) == 0 ||
-				strncmp(*argv, "/c",2) == 0)
-		{
-			cout << m->getCPUFamilyModelString() << endl;
-			exit(EXIT_SUCCESS);
-		}
-		else if (strncmp(*argv, "-txn",4) == 0 ||
-				strncmp(*argv, "/txn",4) == 0)
-		{
-			argv++;
-			argc--;
-			txn_rate = strtoull(*argv,NULL,10);
-			cout << "txn_rate set to " << txn_rate << endl;
-			continue;
-		}
-		if (strncmp(*argv, "--yescores", 10) == 0 ||
-				strncmp(*argv, "-yc", 3) == 0 ||
-				strncmp(*argv, "/yc", 3) == 0)
-		{
-			argv++;
-			argc--;
-			show_partial_core_output = true;
-			if(*argv == NULL)
-			{
-				cerr << "Error: --yescores requires additional argument." << endl;
-				exit(EXIT_FAILURE);
-			}
-			std::stringstream ss(*argv);
-			while(ss.good())
-			{
-				string s;
-				int core_id;
-				std::getline(ss, s, ',');
-				if(s.empty())
-					continue;
-				core_id = atoi(s.c_str());
-				if(core_id > MAX_CORES)
-				{
-					cerr << "Core ID:" << core_id << " exceed maximum range " << MAX_CORES << ", program abort" << endl;
-					exit(EXIT_FAILURE);
-				}
+	}
 
-				ycores.set(atoi(s.c_str()),true);
-			}
-			if(m->getNumCores() > MAX_CORES)
-			{
-				cerr << "Error: --yescores option is enabled, but #define MAX_CORES " << MAX_CORES << " is less than  m->getNumCores() = " << m->getNumCores() << endl;
-				cerr << "There is a potential to crash the system. Please increase MAX_CORES to at least " << m->getNumCores() << " and re-enable this option." << endl;
-				exit(EXIT_FAILURE);
-			}
-			continue;
+	if (vm.count("event")) {
+		vector<string> events = vm["event"].as<vector<string>>();
+		if(events.size() > 4 ) {
+			cerr << "At most 4 events are allowed"<< endl;
+			exit(EXIT_FAILURE);
 		}
-		else if (strncmp(*argv, "-e",2) == 0)
+
+		int cur_event = 0;
+		for (const auto& event : events)
 		{
-			argv++;
-			argc--;
-			if(cur_event >= 4 ) {
-				cerr << "At most 4 events are allowed"<< endl;
-				exit(EXIT_FAILURE);
-			}
 			try {
-				build_event(*argv,&regs[cur_event],cur_event);
+				build_event(event.c_str(), &regs[cur_event], cur_event);
 				cur_event++;
 			} catch (const char * /* str */) {
 				exit(EXIT_FAILURE);
 			}
+		}
+	}
 
-			continue;
-		}
-		else if (strncmp(*argv, "--", 2) == 0)
-		{
-			argv++;
-			sysCmd = *argv;
-			sysArgv = argv;
-			break;
-		}
-		else
-		{
-			// any other options positional that is a floating point number is treated as <delay>,
-			// while the other options are ignored with a warning issues to stderr
-			double delay_input;
-			std::istringstream is_str_stream(*argv);
-			is_str_stream >> noskipws >> delay_input;
-			if(is_str_stream.eof() && !is_str_stream.fail()) {
-				delay = delay_input;
-			} else {
-				cerr << "WARNING: unknown command-line option: \"" << *argv << "\". Ignoring it." << endl;
-				print_usage(program);
-				exit(EXIT_FAILURE);
+	vector<vector<string>> commands;
+	vector<int> affinities;
+	if (vm.count("run")) {
+		string filename = vm["run"].as<string>();
+		string line;
+		ifstream f;
+		f.open(filename);
+		while (std::getline(f, line)) {
+			istringstream iss(line);
+			while (iss.good()) {
+				unsigned int core_id = -1;
+				string command_line;
+				iss >> core_id;
+				getline(iss, command_line);
+				if(core_id > MAX_CORES) {
+					cerr << "Core ID:" << core_id << " exceed maximum range " << MAX_CORES << ", program abort" << endl;
+					exit(EXIT_FAILURE);
+				}
+				int argc;
+				char **argv;
+				g_shell_parse_argv (command_line.c_str(), &argc, &argv, NULL);
+				vector<string> command;
+				for (int i=0; i<argc; i++)
+					command.push_back(string(argv[i]));
+				commands.push_back(command);
+				affinities.push_back(core_id);
 			}
-			continue;
 		}
-	} while(argc > 1); // end of command line partsing loop
+		f.close();
+	}
 
 	conf.OffcoreResponseMsrValue[0] = events[0].msr_value;
 	conf.OffcoreResponseMsrValue[1] = events[1].msr_value;
@@ -370,7 +340,7 @@ int main(int argc, char * argv[])
 	std::vector<CoreCounterState> BeforeState, AfterState;
 	std::vector<SocketCounterState> DummySocketStates;
 
-	if ( (sysCmd != NULL) && (delay<=0.0) ) {
+	if ( (commands.size() == 0) && (delay <= 0.0) ) {
 		// in case external command is provided in command line, and
 		// delay either not provided (-1) or is zero
 		m->setBlocked(true);
@@ -395,11 +365,17 @@ int main(int argc, char * argv[])
 	BeforeTime = m->getTickCount();
 	m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
 
-	if( sysCmd != NULL ) {
-		MySystem(sysCmd, sysArgv);
+	/* Run commands */
+	vector<pid_t> pids;
+	if (commands.size()) {
+		pids = execute_cmds(commands, affinities);
 	}
 
-	while(1)
+	if(csv)
+		cout << "Interval,Core,IPC,Instructions,Cycles,Event0,Event1,Event2,Event3\n";
+
+
+	for (size_t interval = 0; interval < vm["max-intervals"].as<size_t>(); interval++)
 	{
 		if(!csv) cout << std::flush;
 		int delay_ms = int(delay * 1000);
@@ -424,10 +400,6 @@ int main(int argc, char * argv[])
 		AfterTime = m->getTickCount();
 		m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
 
-		cout << "Time elapsed: "<<dec<<fixed<<AfterTime-BeforeTime<<" ms" << endl;
-		cout << "txn_rate: " << txn_rate << endl;
-		//cout << "Called sleep function for "<<dec<<fixed<<delay_ms<<" ms\n";
-
 		for(uint32 i=0;i<cur_event;++i)
 		{
 			cout <<"Event"<<i<<": "<<events[i].name<<" (raw 0x"<<
@@ -435,35 +407,34 @@ int main(int argc, char * argv[])
 
 			if(events[i].msr_value)
 				cout << ", offcore_rsp 0x" << (uint64) events[i].msr_value;
-
 			cout << std::dec << ")" << endl;
 		}
-		cout << endl;
-		if(csv)
-			cout << "Core,IPC,Instructions,Cycles,Event0,Event1,Event2,Event3\n";
-		else
+
+		if (!csv) {
+			cout << endl;
+			cout << "Time elapsed: "<<dec<<fixed<<AfterTime-BeforeTime<<" ms" << endl;
+			cout << "txn_rate: " << txn_rate << endl;
 			cout << "Core | IPC | Instructions  |  Cycles  | Event0  | Event1  | Event2  | Event3 \n";
+		}
 
 		for(uint32 i = 0; i<ncores ; ++i)
 		{
 			if(m->isCoreOnline(i) == false || (show_partial_core_output && ycores.test(i) == false))
 				continue;
 			if(csv)
-				cout <<i<<",";
+				cout << interval << "," << i << ",";
 			else
-				cout <<" "<< setw(3) << i << "   " << setw(2) ; 
+				cout <<" "<< setw(3) << i << "   " << setw(2) ;
 			print_custom_stats(BeforeState[i], AfterState[i], csv, txn_rate);
 		}
-		if(csv)
-			cout << "*,";
-		else
-		{
+
+		if(!csv) {
 			cout << "-------------------------------------------------------------------------------------------------------------------\n";
 			cout << "   *   ";
+			print_custom_stats(SysBeforeState, SysAfterState, csv, txn_rate);
+			std::cout << std::endl;
 		}
-		print_custom_stats(SysBeforeState, SysAfterState, csv, txn_rate);
 
-		std::cout << std::endl;
 
 		swap(BeforeTime, AfterTime);
 		swap(BeforeState, AfterState);
@@ -474,5 +445,10 @@ int main(int argc, char * argv[])
 			break;
 		}
 	}
+
+	/* Kill children */
+	for (const auto &pid : pids)
+		kill(pid, SIGKILL);
+
 	exit(EXIT_SUCCESS);
 }

@@ -94,6 +94,7 @@ inline void MySleepUs(int delay_us)
 }
 
 void MySystem(char * sysCmd, char ** argc);
+std::vector<pid_t> execute_cmds(const std::vector<std::vector<std::string>> &commands, std::vector<int> affinities);
 
 #ifdef _MSC_VER
 #pragma warning (disable : 4068 ) // disable unknown pragma warning

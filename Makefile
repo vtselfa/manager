@@ -19,8 +19,8 @@ endif
 UNAME:=$(shell uname)
 
 ifeq ($(UNAME), Linux)
-LIB= -pthread -lrt
-CXXFLAGS += -std=c++0x
+LIB= -pthread -lrt -lboost_program_options -lglib-2.0
+CXXFLAGS += -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -std=c++0x
 endif
 ifeq ($(UNAME), Darwin)
 LIB= -lpthread /usr/lib/libPcmMsr.dylib 

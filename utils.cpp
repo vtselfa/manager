@@ -19,12 +19,18 @@ CT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 #include <iostream>
 #include <cassert>
 #include <climits>
+#include <signal.h>
+
 #ifdef _MSC_VER
 #include <process.h>
 #include <comdef.h>
 #else
 #include <sys/wait.h> // for waitpid()
 #endif
+
+#define _GNU_SOURCE
+#include <sched.h>
+
 #include "utils.h"
 
 //! \brief handler of exit() call
@@ -393,3 +399,65 @@ void MySystem(char * sysCmd, char ** sysArgv)
 #endif
 }
 
+
+//!\brief launches multiple external program in separate processes
+std::vector<pid_t> execute_cmds(const std::vector<std::vector<std::string>> &commands, std::vector<int> affinities)
+{
+	std::vector<pid_t> pids;
+
+    if (commands.size() == 0 || commands[0].size() == 0 || commands[0][0].size() == 0) {
+        assert("No program provided");
+        exit(EXIT_FAILURE);
+    }
+
+    if (commands.size() != affinities.size()) {
+        assert("The number of commands and affinities differ");
+        exit(EXIT_FAILURE);
+    }
+
+	if (PCM::getInstance()->isBlocked()) {
+		std::cerr << "Not supported, sorry" << std::endl;
+		exit(EXIT_FAILURE);
+	}
+
+	pid_t ppid = getpid();
+	for (size_t i = 0; i < commands.size(); i++) {
+		const char *cmd = commands[i][0].c_str();
+        char **argv = new char*[commands[i].size() + 1];
+        size_t j;
+        int core = affinities[i];
+
+        for (j = 0; j < commands[i].size(); j++)
+		    argv[j] = (char*) commands[i][j].c_str();
+		argv[j] = NULL;
+
+		std::cerr << std::endl << "Executing \"";
+		std::cerr << cmd;
+		std::cerr << "\" command:";
+        std::cerr << "in core " << core << std::endl;
+
+		pid_t child_pid = fork();
+
+		// Child
+		if(child_pid == 0) {
+            cpu_set_t mask;
+            CPU_ZERO(&mask);
+            CPU_SET(core, &mask);
+            sched_setaffinity(0, sizeof(mask), &mask);
+			execvp(cmd, argv);
+			std::cerr << "Failed to start program \"" << cmd << "\"" << std::endl;
+			kill(ppid, SIGKILL); // Kill parent
+			exit(EXIT_FAILURE);
+		}
+
+		// Parent
+		else {
+            core += 2;
+			pids.push_back(child_pid);
+		}
+
+        delete [] argv;
+	}
+
+	return pids;
+}
