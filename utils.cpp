@@ -1,19 +1,20 @@
 /*
+vim: set ts=4 sw=4 et :
 Copyright (c) 2009-2013, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the dis
-tribution.
-    * Neither the name of Intel Corporation nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ * Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the dis
+ tribution.
+ * Neither the name of Intel Corporation nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNES
-S FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDI
-NG, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRI
-CT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNES
+ S FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDI
+ NG, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRI
+ CT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 // written by Andrey Semin
 
 #include <iostream>
@@ -38,14 +39,14 @@ void exit_cleanup(void)
 {
     std::cout << std::flush;
 
-	restore_signal_handlers();
+    restore_signal_handlers();
 
-   // this replaces same call in cleanup() from util.h
-   PCM::getInstance()->cleanup(); // this replaces same call in cleanup() from util.h
+    // this replaces same call in cleanup() from util.h
+    PCM::getInstance()->cleanup(); // this replaces same call in cleanup() from util.h
 
-//TODO: delete other shared objects.... if any.
+    //TODO: delete other shared objects.... if any.
 
-// now terminate the program immediately
+    // now terminate the program immediately
     _exit(EXIT_SUCCESS);
 }
 
@@ -73,70 +74,70 @@ ThreadGroupTempAffinity::~ThreadGroupTempAffinity()
 
 LONG unhandled_exception_handler(LPEXCEPTION_POINTERS p)
 {
-	std::cerr << "DEBUG: Unhandled Exception event" << std::endl;
-	exit(EXIT_FAILURE);
+    std::cerr << "DEBUG: Unhandled Exception event" << std::endl;
+    exit(EXIT_FAILURE);
 }
 
 /**
-* \brief version of interrupt handled for Windows
-*/
+ * \brief version of interrupt handled for Windows
+ */
 BOOL sigINT_handler(DWORD fdwCtrlType)
 {
 
-	// output for DEBUG only
-	std::cerr << "DEBUG: caught signal to interrupt: ";
-	switch( fdwCtrlType ) 
-	{ 
-	// Handle the CTRL-C signal. 
-	case CTRL_C_EVENT: 
-		std::cerr << "Ctrl-C event" << std::endl;
-		break;
+    // output for DEBUG only
+    std::cerr << "DEBUG: caught signal to interrupt: ";
+    switch( fdwCtrlType )
+    {
+        // Handle the CTRL-C signal.
+        case CTRL_C_EVENT:
+            std::cerr << "Ctrl-C event" << std::endl;
+            break;
 
-	// CTRL-CLOSE: confirm that the user wants to exit. 
-	case CTRL_CLOSE_EVENT: 
-		std::cerr << "Ctrl-Close event" << std::endl;
-		break;
- 
-	// Pass other signals to the next handler. 
-	case CTRL_BREAK_EVENT: 
-		std::cerr << "Ctrl-Break event" << std::endl;
-		break;
- 
-	case CTRL_LOGOFF_EVENT: 
-		std::cerr << "Ctrl-Logoff event" << std::endl;
-		break;
- 
-	case CTRL_SHUTDOWN_EVENT: 
-		std::cerr << "Ctrl-Shutdown event" << std::endl;
-		break;
- 
-	default: 
-		std::cerr << "Unknown event" << std::endl;
-		break;
-	} 
-	
+            // CTRL-CLOSE: confirm that the user wants to exit.
+        case CTRL_CLOSE_EVENT:
+            std::cerr << "Ctrl-Close event" << std::endl;
+            break;
+
+            // Pass other signals to the next handler.
+        case CTRL_BREAK_EVENT:
+            std::cerr << "Ctrl-Break event" << std::endl;
+            break;
+
+        case CTRL_LOGOFF_EVENT:
+            std::cerr << "Ctrl-Logoff event" << std::endl;
+            break;
+
+        case CTRL_SHUTDOWN_EVENT:
+            std::cerr << "Ctrl-Shutdown event" << std::endl;
+            break;
+
+        default:
+            std::cerr << "Unknown event" << std::endl;
+            break;
+    }
+
     // TODO: dump summary, if needed
 
     // in case PCM is blocked just return and summary will be dumped in
     // calling function, if needed
     if( PCM::getInstance()->isBlocked() ) {
         return FALSE;
-	} else {
+    } else {
         exit_cleanup();
-		return FALSE; // to prevent Warning
-	}
+        return FALSE; // to prevent Warning
+    }
 }
 
 /**
-* \brief started in a separate thread and blocks waiting for child applicaiton to exit.
-* After child app exits: -> print Child's termination status and terminates PCM
-*/
+ * \brief started in a separate thread and blocks waiting for child applicaiton to exit.
+ * After child app exits: -> print Child's termination status and terminates PCM
+ */
 void waitForChild(void *proc_id)
 {
     intptr_t procHandle = (intptr_t)proc_id;
     int termstat;
     _cwait(&termstat, procHandle, _WAIT_CHILD);
-	std::cerr << "Program exited with status " << termstat << std::endl;
+    std::cerr << "Program exited with status " << termstat << std::endl;
     exit(EXIT_SUCCESS);
 }
 #else
@@ -198,11 +199,11 @@ void sigSTOP_handler(int signum)
     std::string state = (runState==1 ? "suspend" : "continue");
     std::cerr << "DEBUG: caught signal to " << state << " execution." << std::endl; // debug of signals only
     if(runState==1) {
-    // stop counters and sleep... almost forever;
+        // stop counters and sleep... almost forever;
         m->setRunState(0);
         sleep(INT_MAX);
     } else {
-    // resume
+        // resume
         m->setRunState(1);
         alarm(1);
     }
@@ -210,9 +211,9 @@ void sigSTOP_handler(int signum)
 }
 
 /**
-* \brief handles signals that lead to update of configuration
-* such as SIGCONT
-*/
+ * \brief handles signals that lead to update of configuration
+ * such as SIGCONT
+ */
 void sigCONT_handler(int signum)
 {
     std::cout << "DEBUG: caught signal to continue execution." << std::endl; // debug of signals only
@@ -226,26 +227,26 @@ void set_signal_handlers(void)
 {
     if( atexit(exit_cleanup) != 0 )
     {
-       std::cerr << "ERROR: Failed to install exit handler." << std::endl;
-       return;
+        std::cerr << "ERROR: Failed to install exit handler." << std::endl;
+        return;
     }
 
 #ifdef _MSC_VER
     BOOL handlerStatus;
-	// Increase the priority a bit to improve context switching delays on Windows
+    // Increase the priority a bit to improve context switching delays on Windows
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-// to fix Cygwin/BASH setting Ctrl+C handler need first to restore the default one
-	handlerStatus = SetConsoleCtrlHandler(NULL, FALSE); // restores normal processing of CTRL+C input
-	if(handlerStatus == 0) {
+    // to fix Cygwin/BASH setting Ctrl+C handler need first to restore the default one
+    handlerStatus = SetConsoleCtrlHandler(NULL, FALSE); // restores normal processing of CTRL+C input
+    if(handlerStatus == 0) {
         std::wcerr << "Failed to set Ctrl+C hanlder. Error code: " << GetLastError() << " ";
-        const TCHAR * errorStr = _com_error(GetLastError()).ErrorMessage(); 
+        const TCHAR * errorStr = _com_error(GetLastError()).ErrorMessage();
         if (errorStr) std::wcerr << errorStr;
         std::wcerr << std::endl;
-		_exit(EXIT_FAILURE);
-	}
-	SetConsoleCtrlHandler((PHANDLER_ROUTINE)sigINT_handler, TRUE);
-	SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)&unhandled_exception_handler);
-	std::cerr << "DEBUG: Setting Ctrl+C done." << std:: endl;
+        _exit(EXIT_FAILURE);
+    }
+    SetConsoleCtrlHandler((PHANDLER_ROUTINE)sigINT_handler, TRUE);
+    SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)&unhandled_exception_handler);
+    std::cerr << "DEBUG: Setting Ctrl+C done." << std:: endl;
 
 #else
     struct sigaction saINT, saHUP, saUSR, saSTOP, saCONT;
@@ -300,34 +301,34 @@ void set_signal_handlers(void)
 void restore_signal_handlers(void)
 {
 #ifndef _MSC_VER
-     struct sigaction action;
-     action.sa_handler = SIG_DFL;
+    struct sigaction action;
+    action.sa_handler = SIG_DFL;
 
-     sigaction(SIGINT , &action, NULL);
-     sigaction(SIGQUIT, &action, NULL);
-     sigaction(SIGABRT, &action, NULL);
-     sigaction(SIGTERM, &action, NULL);
-     sigaction(SIGSEGV, &action, NULL);
+    sigaction(SIGINT , &action, NULL);
+    sigaction(SIGQUIT, &action, NULL);
+    sigaction(SIGABRT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGSEGV, &action, NULL);
 
-     sigaction(SIGCHLD, &action, NULL); 
+    sigaction(SIGCHLD, &action, NULL);
 
-     // restore SIGHUP handler to restart
-     sigaction(SIGHUP, &action, NULL);
+    // restore SIGHUP handler to restart
+    sigaction(SIGHUP, &action, NULL);
 
-     // restore SIGHUP handler to restart
-     sigaction(SIGUSR1, &action, NULL);
-     sigaction(SIGUSR2, &action, NULL);
+    // restore SIGHUP handler to restart
+    sigaction(SIGUSR1, &action, NULL);
+    sigaction(SIGUSR2, &action, NULL);
 
-     // restore SIGSTOP handler: pause/resume
-//     sigaction(SIGSTOP, &action, NULL); // cannot catch this
-// handle SUSP character: normally C-z)
-     sigaction(SIGTSTP, &action, NULL);
-     sigaction(SIGTTIN, &action, NULL);
-     sigaction(SIGTTOU, &action, NULL);
+    // restore SIGSTOP handler: pause/resume
+    //     sigaction(SIGSTOP, &action, NULL); // cannot catch this
+    // handle SUSP character: normally C-z)
+    sigaction(SIGTSTP, &action, NULL);
+    sigaction(SIGTTIN, &action, NULL);
+    sigaction(SIGTTOU, &action, NULL);
 
-     // restore SIGCONT & SIGALRM handler
-     sigaction(SIGCONT, &action, NULL);
-     sigaction(SIGALRM, &action, NULL);
+    // restore SIGCONT & SIGALRM handler
+    sigaction(SIGCONT, &action, NULL);
+    sigaction(SIGALRM, &action, NULL);
 #endif
 
     return;
@@ -344,13 +345,13 @@ void MySystem(char * sysCmd, char ** sysArgv)
     std::cerr << sysCmd;
     std::cerr << "\" command:" << std::endl;
 #ifdef _MSC_VER
-	intptr_t ret;
-	char cbuf[128];
+    intptr_t ret;
+    char cbuf[128];
 
-	if( PCM::getInstance()->isBlocked() ) { // synchronous start: wait for child process completion
-		// in case PCM should be blocked waiting for the child applicaiton to end
-		// 1. returns and ret = -1 in case of error creating process is encountered
-		// 2. 
+    if( PCM::getInstance()->isBlocked() ) { // synchronous start: wait for child process completion
+        // in case PCM should be blocked waiting for the child applicaiton to end
+        // 1. returns and ret = -1 in case of error creating process is encountered
+        // 2.
         ret = _spawnvp(_P_WAIT, sysCmd, sysArgv);
         if(ret == -1) { // process creation failed.
             strerror_s(cbuf, 128, errno);
@@ -367,7 +368,7 @@ void MySystem(char * sysCmd, char ** sysArgv)
             exit(EXIT_FAILURE);
         } else { // ret here is the new process handle.
             // start new thread which will wait for child completion, and continue PCM's execution
-			if(_beginthread(waitForChild, 0, (void *)ret) == -1L) {
+            if(_beginthread(waitForChild, 0, (void *)ret) == -1L) {
                 strerror_s(cbuf, 128, errno);
                 std::cerr << "WARNING: Failed to set waitForChild. PCM will countinue infinitely: finish it manually! " << cbuf << std::endl;
             }
@@ -403,7 +404,7 @@ void MySystem(char * sysCmd, char ** sysArgv)
 //!\brief launches multiple external program in separate processes
 std::vector<pid_t> execute_cmds(const std::vector<std::vector<std::string>> &commands, std::vector<int> affinities)
 {
-	std::vector<pid_t> pids;
+    std::vector<pid_t> pids;
 
     if (commands.size() == 0 || commands[0].size() == 0 || commands[0][0].size() == 0) {
         assert("No program provided");
@@ -415,49 +416,49 @@ std::vector<pid_t> execute_cmds(const std::vector<std::vector<std::string>> &com
         exit(EXIT_FAILURE);
     }
 
-	if (PCM::getInstance()->isBlocked()) {
-		std::cerr << "Not supported, sorry" << std::endl;
-		exit(EXIT_FAILURE);
-	}
+    if (PCM::getInstance()->isBlocked()) {
+        std::cerr << "Not supported, sorry" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-	pid_t ppid = getpid();
-	for (size_t i = 0; i < commands.size(); i++) {
-		const char *cmd = commands[i][0].c_str();
+    pid_t ppid = getpid();
+    for (size_t i = 0; i < commands.size(); i++) {
+        const char *cmd = commands[i][0].c_str();
         char **argv = new char*[commands[i].size() + 1];
         size_t j;
         int core = affinities[i];
 
         for (j = 0; j < commands[i].size(); j++)
-		    argv[j] = (char*) commands[i][j].c_str();
-		argv[j] = NULL;
+            argv[j] = (char*) commands[i][j].c_str();
+        argv[j] = NULL;
 
-		std::cerr << std::endl << "Executing \"";
-		std::cerr << cmd;
-		std::cerr << "\" command:";
+        std::cerr << std::endl << "Executing \"";
+        std::cerr << cmd;
+        std::cerr << "\" command:";
         std::cerr << "in core " << core << std::endl;
 
-		pid_t child_pid = fork();
+        pid_t child_pid = fork();
 
-		// Child
-		if(child_pid == 0) {
+        // Child
+        if(child_pid == 0) {
             cpu_set_t mask;
             CPU_ZERO(&mask);
             CPU_SET(core, &mask);
             sched_setaffinity(0, sizeof(mask), &mask);
-			execvp(cmd, argv);
-			std::cerr << "Failed to start program \"" << cmd << "\"" << std::endl;
-			kill(ppid, SIGKILL); // Kill parent
-			exit(EXIT_FAILURE);
-		}
+            execvp(cmd, argv);
+            std::cerr << "Failed to start program \"" << cmd << "\"" << std::endl;
+            kill(ppid, SIGKILL); // Kill parent
+            exit(EXIT_FAILURE);
+        }
 
-		// Parent
-		else {
+        // Parent
+        else {
             core += 2;
-			pids.push_back(child_pid);
-		}
+            pids.push_back(child_pid);
+        }
 
         delete [] argv;
-	}
+    }
 
-	return pids;
+    return pids;
 }
