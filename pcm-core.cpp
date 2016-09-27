@@ -41,7 +41,7 @@
 #define PCM_CALIBRATION_INTERVAL 50 // calibrate clock only every 50th iteration
 #define MAX_CORES 4096
 #define MAX_EVENTS 4
-
+Ä[MaÄ[MaÄ[MaÃ
 using namespace std;
 namespace po = boost::program_options;
 
