@@ -19,6 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <boost/dynamic_bitset_fwd.hpp>
 
 
+#define MAX_CPUS 24
+#define MAX_WAYS 20
+
+
 boost::dynamic_bitset<> cos_get_cpus(std::string cos);
 void cos_set_cpus(std::string cos, boost::dynamic_bitset<> cpus);
 
