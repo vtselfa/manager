@@ -12,6 +12,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "cat.hpp"
+#include "manager_pcm.hpp"
 
 
 namespace po = boost::program_options;
@@ -282,7 +283,9 @@ void loop(vector<Task> tasklist, vector<Cos> coslist, double time_int, double ti
 
 		// Run for some time and pause
 		cout << measure<chr::nanoseconds>::execution( tasks_resume, tasklist ) << " ";
+		pcm_before();
 		cout << measure<chr::nanoseconds>::execution( [&delay_ms]() {sleep_for(chr::microseconds(delay_ms*1000));} ) << " ";
+		pcm_after();
 		cout << measure<chr::nanoseconds>::execution( tasks_pause, tasklist ) << endl << endl;
 
 		// sleep_for(chr::seconds(10));
@@ -292,7 +295,6 @@ void loop(vector<Task> tasklist, vector<Cos> coslist, double time_int, double ti
 		// Clean counters
 	}
 }
-
 
 
 void clean_and_die(vector<Task> &tasklist)
@@ -364,7 +366,7 @@ int main(int argc, char *argv[])
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
 		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
 		// ("model", "print CPU Model name and exit (used for pmu-query.py)")
-		// ("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
+		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
 		// ("run,r", po::value<string>(), "file with lines like: <coreaffinity> <command>")
 		// ("max-intervals", po::value<size_t>()->default_value(numeric_limits<size_t>::max()), "stop after this number of intervals.")
@@ -382,7 +384,6 @@ int main(int argc, char *argv[])
 		po::store(parsed_options, vm);
 		po::notify(vm);
 	}
-
 	catch(const std::exception &e)
 	{
 		cout << "Error: " << e.what() << "\n\n";
@@ -412,6 +413,9 @@ int main(int argc, char *argv[])
 
 	try
 	{
+		// Configure PCM
+		pcm_setup(vm["event"].as<vector<string>>());
+
 		// Execute and immediately pause tasks
 		for (auto &task : tasklist)
 			task_execute(task);
