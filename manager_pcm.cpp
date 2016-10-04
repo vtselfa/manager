@@ -26,7 +26,7 @@ struct CoreEvent
 // Global variables
 const int MAX_EVENTS = 4;
 
-PCM *m = PCM::getInstance();
+PCM *m;
 uint64 BeforeTime = 0, AfterTime = 0;
 SystemCounterState SysBeforeState, SysAfterState;
 std::vector<CoreCounterState> BeforeState, AfterState;
@@ -109,6 +109,9 @@ void pcm_setup(vector<string> str_events)
 
 	PCM::ExtendedCustomCoreEventDescription conf;
 
+	// Get PCM handler
+	m = PCM::getInstance();
+
 	if (str_events.size() > MAX_EVENTS)
 		throw std::runtime_error("At most " + to_string(MAX_EVENTS) + " events are allowed");
 
@@ -184,49 +187,50 @@ inline std::string unit_format(IntType n)
 
 
 template <class StateType>
-void print_custom_stats(const StateType &BeforeState, const StateType &AfterState, bool csv, uint64 txn_rate = 1)
+void print_custom_stats(const StateType &BeforeState, const StateType &AfterState, std::ostream &out, bool use_csv,  uint64 txn_rate = 1)
 {
 	uint64 cycles = getCycles(BeforeState, AfterState);
 	uint64 instr = getInstructionsRetired(BeforeState, AfterState);
-	if(!csv)
+
+	if (!use_csv)
 	{
-		cout << double(instr)/double(cycles);
+		out << setw(10) << double(instr)/double(cycles);
 		if(txn_rate == 1)
 		{
-			cout << setw(14) << unit_format(instr);
-			cout << setw(11) << unit_format(cycles);
+			out << setw(14) << unit_format(instr);
+			out << setw(11) << unit_format(cycles);
 		}
 		else
 		{
-			cout << setw(14) << double(instr)/double(txn_rate);
-			cout << setw(11) << double(cycles)/double(txn_rate);
+			out << setw(14) << double(instr)/double(txn_rate);
+			out << setw(11) << double(cycles)/double(txn_rate);
 		}
 	}
 	else
 	{
-		cout << double(instr)/double(cycles) << ",";
-		cout << double(instr)/double(txn_rate) << ",";
-		cout << double(cycles)/double(txn_rate) << ",";
+		out << double(instr)/double(cycles) << ",";
+		out << double(instr)/double(txn_rate) << ",";
+		out << double(cycles)/double(txn_rate) << ",";
 	}
 
 	for (int i = 0; i < MAX_EVENTS; ++i)
 	{
-		if(!csv)
+		if(!use_csv)
 		{
-			cout << setw(10);
+			out << setw(10);
 			if(txn_rate == 1)
-				cout << unit_format(getNumberOfCustomEvents(i, BeforeState, AfterState));
+				out << unit_format(getNumberOfCustomEvents(i, BeforeState, AfterState));
 			else
-				cout << double(getNumberOfCustomEvents(i, BeforeState, AfterState))/double(txn_rate);
+				out << double(getNumberOfCustomEvents(i, BeforeState, AfterState))/double(txn_rate);
 		}
 		else
 		{
-			cout << double(getNumberOfCustomEvents(i, BeforeState, AfterState)) / double(txn_rate);
+			out << double(getNumberOfCustomEvents(i, BeforeState, AfterState)) / double(txn_rate);
 			if (i < MAX_EVENTS - 1)
-				cout << ",";
+				out << ",";
 		}
 	}
-	cout << endl;
+	out << endl;
 }
 
 
@@ -237,9 +241,10 @@ void pcm_before()
 }
 
 
-void pcm_after()
+void pcm_after(std::ostream &out)
 {
 	const size_t ncores = m->getNumCores();
+	bool use_csv = out.rdbuf() != cout.rdbuf();
 	AfterTime = m->getTickCount();
 	m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
 
@@ -248,14 +253,20 @@ void pcm_after()
 		if (!m->isCoreOnline(i))// == false || (show_partial_core_output && ycores.test(i) == false))
 			continue;
 
-		if (csv)
-			cout << AfterTime - BeforeTime << "," << i << ",";
+		if (use_csv)
+			out << AfterTime - BeforeTime << "," << i << ",";
 		else
-			cout << " " << setw(3) << i << "   " << setw(2) ;
-		print_custom_stats(BeforeState[i], AfterState[i], csv);
+			out << " " << setw(3) << i << "   " << setw(2) ;
+		print_custom_stats(BeforeState[i], AfterState[i], out, use_csv);
 	}
 
 	std::swap(BeforeTime, AfterTime);
 	std::swap(BeforeState, AfterState);
 	std::swap(SysBeforeState, SysAfterState);
+}
+
+
+void pcm_clean()
+{
+	PCM::getInstance()->cleanup();
 }

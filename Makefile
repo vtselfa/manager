@@ -9,7 +9,7 @@ all: $(EXE)
 
 klocwork: $(EXE)
 
-CXXFLAGS += -Wall -g -O3 -Wno-unknown-pragmas
+CXXFLAGS += -Wall -g -O0 -Wno-unknown-pragmas
 
 # rely on Linux perf support (user needs CAP_SYS_ADMIN privileges), comment out to disable
 ifneq ($(wildcard /usr/include/linux/perf_event.h),)
@@ -62,6 +62,12 @@ OBJS = $(COMMON_OBJS) $(EXE_OBJS)
 
 nice:
 	uncrustify --replace -c ~/uncrustify.cfg *.cpp *.h WinMSRDriver/Win7/*.h WinMSRDriver/Win7/*.c WinMSRDriver/WinXP/*.h WinMSRDriver/WinXP/*.c  PCM_Win/*.h PCM_Win/*.cpp  
+
+manager: common.o cat.o manager.o manager_pcm.o $(COMMON_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_system -lboost_filesystem -lyaml-cpp
+
+cat-demo: common.o cat.o cat-demo.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_system -lboost_filesystem 
 
 clean:
 	rm -rf *.x *.o *~ *.d

@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 			unsigned int sch_mask = std::stoi(data[1], 0, 16);
 			unsigned int cpu_mask = std::stoi(data[2], 0, 16);
 			dynamic_bitset<> sch(MAX_WAYS, sch_mask);
-			dynamic_bitset<> cpu(MAX_WAYS, cpu_mask);
+			dynamic_bitset<> cpu(MAX_CPUS, cpu_mask);
 			cos_create(cos, sch, cpu, vector<string>(data.begin() + 3, data.end()));
 		}
 		catch (const std::exception &e)

@@ -1,6 +1,8 @@
 #include <fstream>
+#include <iostream>
 #include <boost/dynamic_bitset.hpp>
 #include <boost/filesystem.hpp>
+#include "common.hpp"
 #include "cat.hpp"
 
 
@@ -13,26 +15,6 @@ namespace fs = boost::filesystem;
 using std::string;
 using std::vector;
 using boost::dynamic_bitset;
-
-
-/* Opens an output stream and checks for errors. */
-std::ofstream open_ofstream(string path)
-{
-	std::ofstream f(path);
-	if (!f)
-		throw std::runtime_error("Could not open " + path + ": " + strerror(errno));
-	return f;
-}
-
-
-/* Opens an intput stream and checks for errors. */
-std::ifstream open_ifstream(string path)
-{
-	std::ifstream f(path);
-	if (!f)
-		throw std::runtime_error("Could not open " + path + ": " + strerror(errno));
-	return f;
-}
 
 
 /* Reads a bitset with the assigned CPUs to a COS.
@@ -97,7 +79,9 @@ void cos_set_schemata(string cos, dynamic_bitset<> schemata)
 	int mask = schemata.to_ulong();
 	int mask_res;
 
-	assert(cos != ""); // Use "." for the default COS
+	if (cos == "")
+		throw std::runtime_error("Use '.' to refer to the COS at the base level, which doesn't seem to do anything");
+
 	fs::current_path(ROOT);
 	fs::current_path(cos);
 
@@ -226,7 +210,29 @@ void cos_delete(string cos)
 		throw std::runtime_error("The COS " + cos + " does not exist");
 
 	cos_reset_tasks(cos);
+
+	// Reset schemata
+	cos_set_schemata(cos, dynamic_bitset<>(MAX_WAYS, -1ul));
+
+	// Reset cpus
+	cos_set_cpus(cos, dynamic_bitset<>(MAX_CPUS, -1ul));
+
+	// Remove
 	fs::remove(path);
+}
+
+
+// Remove all COS
+// Since we are iterating an special filesystem we cannot trust the iterator remaining valid after a deletion
+// Therefore, first store targets and then delete them
+void cos_delete_all()
+{
+	auto to_remove = vector<fs::path>();
+	for(const auto &p: fs::directory_iterator(ROOT))
+		if (fs::is_directory(p) && fs::basename(p) != "info")
+			to_remove.push_back(p);
+	for(const auto &p: to_remove)
+		cos_delete(fs::basename(p));
 }
 
 
@@ -234,11 +240,19 @@ void cat_reset()
 {
 	fs::current_path(ROOT);
 
-	// Remove all COS
-	for(auto &p: fs::directory_iterator("."))
-		if (fs::is_directory(p) && fs::basename(p) != "info")
-			cos_delete(fs::basename(p));
+	cos_delete_all();
+
+	// Recreate COS to reset them
+	for (int cos = 0; cos < MAX_COS; cos++)
+		cos_create(std::to_string(cos), dynamic_bitset<>(MAX_WAYS, -1ul), dynamic_bitset<>(MAX_CPUS, -1ul), {});
+
+	cos_delete_all();
+
+	// This is just in case, but doesn't seem to do anything
 
 	// Reset schemata
 	cos_set_schemata(".", dynamic_bitset<>(MAX_WAYS, -1ul));
+
+	// Reset cpus
+	cos_set_cpus(".", dynamic_bitset<>(MAX_CPUS, -1ul));
 }
