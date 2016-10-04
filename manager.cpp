@@ -1,21 +1,21 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
-#include <cstring>
 
+#include <fcntl.h>
 #include <grp.h>
 #include <sched.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <boost/dynamic_bitset.hpp>
 #include <boost/program_options.hpp>
 #include <glib.h>
 #include <yaml-cpp/yaml.h>
 
-#include "cat.hpp"
+#include "cat-intel.hpp"
 #include "common.hpp"
 #include "manager_pcm.hpp"
 
@@ -27,7 +27,6 @@ using std::string;
 using std::to_string;
 using std::vector;
 using std::this_thread::sleep_for;
-using boost::dynamic_bitset;
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -35,11 +34,10 @@ using std::endl;
 
 struct Cos
 {
-	dynamic_bitset<> schemata; // Ways assigned mask
-	dynamic_bitset<> cpus;     // CPUs affected mask
-	vector<int> tasks;         // Indexes of tasks affected (this is NOT a list of PIDs)
+	uint64_t mask;         // Ways assigned mask
+	vector<uint32_t> cpus; // Associated CPUs
 
-	Cos(dynamic_bitset<> schemata,	dynamic_bitset<> cpus, vector<int> tasks = {}) : schemata(schemata), cpus(cpus), tasks(tasks) {}
+	Cos(uint64_t mask, vector<uint32_t> cpus = {}) : mask(mask), cpus(cpus){}
 };
 
 
@@ -47,15 +45,13 @@ struct Task
 {
 	string cmd;
 	vector<int> cpus; // Allowed cpus
-	int cos;          // Assigned COS, 0 -> default COS
 	int pid;          // Set after executing the task
 
-	Task(string cmd, vector<int> cpus, int cos = 0, int pid = 0) : cmd(cmd), cpus(cpus), cos(cos), pid(pid) {}
-	Task(string cmd, int cos, int pid = 0) : cmd(cmd), cos(cos), pid(pid) {}
+	Task(string cmd, vector<int> cpus, int pid = 0) : cmd(cmd), cpus(cpus), pid(pid) {}
 };
 
 
-vector<Cos> config_cos(const YAML::Node &config)
+vector<Cos> config_read_cos(const YAML::Node &config)
 {
 	YAML::Node cos_section = config["cos"];
 	auto result = vector<Cos>();
@@ -65,32 +61,33 @@ vector<Cos> config_cos(const YAML::Node &config)
 
 	for (size_t i = 0; i < cos_section.size(); i++)
 	{
-		dynamic_bitset<> sche(MAX_WAYS, 0); // Invalid on purpose
-		dynamic_bitset<> cpus(MAX_CPUS, 0); // Default, no core assigned
 		const auto &cos = cos_section[i];
 
 		// Schematas are mandatory
 		if (!cos["schemata"])
 			throw std::runtime_error("Each cos must have an schemata");
-		sche = dynamic_bitset<>(MAX_WAYS, cos["schemata"].as<unsigned int>());
+		auto mask = cos["schemata"].as<uint64_t>();
 
-		// CPUs are not mandatory, but then it will be checked that there is at least one task assigned to the COS
+		// CPUs are not mandatory, but note that COS 0 will have all the CPUs by defect
+		auto cpus = vector<uint32_t>();
 		if (cos["cpus"])
 		{
-			if (i == 0)
-				throw std::runtime_error("Default COS cannot have a CPU mask, it's defined by the other COS");
-			cpus = dynamic_bitset<>(MAX_CPUS, cos["cpus"].as<unsigned int>());
+			auto cpulist = cos["cpus"];
+			for (auto it = cpulist.begin(); it != cpulist.end(); it++)
+			{
+				int cpu = it->as<int>();
+				cpus.push_back(cpu);
+			}
 		}
 
-		result.push_back(Cos(sche, cpus));
+		result.push_back(Cos(mask, cpus));
 	}
 
-	// TODO: Fix default COS cpus
 	return result;
 }
 
 
-vector<Task> config_tasks(const YAML::Node &config)
+vector<Task> config_read_tasks(const YAML::Node &config)
 {
 	YAML::Node tasks = config["tasks"];
 	auto result = vector<Task>();
@@ -102,7 +99,7 @@ vector<Task> config_tasks(const YAML::Node &config)
 		string cmd = tasks[i]["cmd"].as<string>();
 
 		// CPUS
-		vector<int> cpus; // Default, no affinity
+		auto cpus = vector<int>(); // Default, no affinity
 		if (tasks[i]["cpus"])
 		{
 			auto cpulist = tasks[i]["cpus"];
@@ -113,56 +110,26 @@ vector<Task> config_tasks(const YAML::Node &config)
 			}
 		}
 
-		// COS
-		unsigned int cos = 0;
-		if (tasks[i]["cos"])
-		{
-			cos = tasks[i]["cos"].as<unsigned int>();
-			if (!config["cos"] && cos != 0) // COS 0 is the default COS, so it's not necesary to define it
-				throw std::runtime_error("To assign a COS to a task it has to be defined first");
-			if (cos > config["cos"].size())
-				throw std::runtime_error("COS number " + std::to_string(cos) + "doesn't exist");
-		}
-
-		result.push_back(Task(cmd, cpus, cos));
+		result.push_back(Task(cmd, cpus));
 	}
 	return result;
 }
 
 
-void cat_setup(const vector<Cos> &coslist, const vector<Task> &tasklist)
+CAT cat_setup(const vector<Cos> &coslist, bool auto_reset)
 {
-	// Not even a default COS defined, we asume the user doesn't want to mess with CAT or has preconfigured it
-	if (coslist.empty())
-		return;
+	auto cat = CAT(auto_reset); // If auto_reset is set CAT is reseted before and after execution
+	cat.init();
 
-	// Reset CAT, just in case
-	cat_reset();
-
-	// Set default COS first.
-	// Note that CPUS cannot be unassigned (i.e. changed from 1 -> 0),
-	// only reassigned (assigned to another COS), so if one wants to remove CPUs
-	// from default COS they have to be assigned to another COS. Thus, it is
-	// incorrect to try to set a CPU mask here. The effective CPU mask it's gonna depend
-	// on the other COS settings.
-	const auto &defcos = coslist[0];
-	cos_set_schemata(".", defcos.schemata);
-
-	// Rest of COS
-	for (size_t i = 1; i < coslist.size(); i++)
+	for (size_t i = 0; i < coslist.size(); i++)
 	{
 		const auto &cos = coslist[i];
-		auto pids = vector<string>();
-		for (int id : cos.tasks)
-		{
-			const auto &task = tasklist[id];
-			if (task.pid > 0)
-				pids.push_back(std::to_string(task.pid));
-			else
-				throw std::runtime_error("Task " + to_string(id) + " is not running");
-		}
-		cos_create(std::to_string(i), cos.schemata, cos.cpus, pids);
+		cat.set_cos_mask(i, cos.mask);
+		for (const auto &cpu : cos.cpus)
+			cat.set_cos_cpu(i, cpu);
 	}
+
+	return cat;
 }
 
 
@@ -231,20 +198,20 @@ void drop_privileges()
 	const char *gidstr = getenv("SUDO_GID");
 	const char *userstr = getenv("SUDO_USER");
 
-	if (!uidstr || !gidstr || userstr)
+	if (!uidstr || !gidstr || !userstr)
 		return;
 
 	const uid_t uid = std::stol(uidstr);
 	const gid_t gid = std::stol(gidstr);
-
-	if (setuid(uid) < 0)
-		throw std::runtime_error("Cannot change uid: " + string(strerror(errno)));
 
 	if (setgid(gid) < 0)
 		throw std::runtime_error("Cannot change gid: " + string(strerror(errno)));
 
 	if (initgroups(userstr, gid) < 0)
 		throw std::runtime_error("Cannot change group access list: " + string(strerror(errno)));
+
+	if (setuid(uid) < 0)
+		throw std::runtime_error("Cannot change uid: " + string(strerror(errno)));
 }
 
 
@@ -261,23 +228,53 @@ void task_execute(Task &task)
 	switch (pid) {
 		// Child
 		case 0:
-			cpu_set_t mask;
-			CPU_ZERO(&mask);
-			for (size_t i = 0; i < task.cpus.size(); i++)
+			{
+				// Set CPU affinity
+				cpu_set_t mask;
+				CPU_ZERO(&mask);
+				for (size_t i = 0; i < task.cpus.size(); i++)
 					CPU_SET(task.cpus[i], &mask);
-			sched_setaffinity(0, sizeof(mask), &mask);
-			drop_privileges(); // Drop privileges
-			execvp(argv[0], argv);
-			throw std::runtime_error("Failed to start program '" + task.cmd + "'");
+				sched_setaffinity(0, sizeof(mask), &mask);
 
-		// Error
+				// Drop sudo privileges
+				try
+				{
+					drop_privileges();
+				}
+				catch (const std::exception &e)
+				{
+					cerr << "Failed to drop privileges: " + string(e.what()) << endl;
+				}
+
+				// Redirect STDOUT to /dev/null
+				int devnull = open("/dev/null", O_WRONLY);
+				if (devnull < 0)
+				{
+					cerr << "Failed to start program '" + task.cmd + "', could not open /dev/null" << endl;
+					exit(EXIT_FAILURE);
+				}
+				if (dup2(devnull, STDOUT_FILENO) < 0)
+				{
+					cerr << "Failed to start program '" + task.cmd + "', could not redirect STDOUT to /dev/null" << endl;
+					exit(EXIT_FAILURE);
+				}
+
+				// Exec
+				execvp(argv[0], argv);
+
+				// Should not reach this
+				cerr << "Failed to start program '" + task.cmd + "'" << endl;
+				exit(EXIT_FAILURE);
+			}
+
+			// Error
 		case -1:
 			throw std::runtime_error("Failed to start program '" + task.cmd + "'");
 
-		// Parent
+			// Parent
 		default:
 			usleep(100); // Wait a bit, just in case
-            task.pid = pid;
+			task.pid = pid;
 			task_pause(task);
 			g_strfreev(argv); // Free the memory allocated for argv
 			break;
@@ -305,23 +302,23 @@ void task_kill(Task &task)
 template<typename TimeT = chr::milliseconds>
 struct measure
 {
-    template<typename F, typename ...Args>
-    static typename TimeT::rep execution(F func, Args&&... args)
-    {
-        auto start = chr::system_clock::now();
+	template<typename F, typename ...Args>
+		static typename TimeT::rep execution(F func, Args&&... args)
+		{
+			auto start = chr::system_clock::now();
 
-        // Now call the function with all the parameters you need.
-        func(std::forward<Args>(args)...);
+			// Now call the function with all the parameters you need.
+			func(std::forward<Args>(args)...);
 
-        auto duration = chr::duration_cast<TimeT>
-                            (chr::system_clock::now() - start);
+			auto duration = chr::duration_cast<TimeT>
+				(chr::system_clock::now() - start);
 
-        return duration.count();
-    }
+			return duration.count();
+		}
 };
 
 
-void loop(vector<Task> tasklist, vector<Cos> coslist, double time_int, double time_max, std::ostream &out)
+void loop(vector<Task> tasklist, vector<Cos> coslist, CAT &cat, double time_int, double time_max, std::ostream &out)
 {
 	if (time_int <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -342,34 +339,26 @@ void loop(vector<Task> tasklist, vector<Cos> coslist, double time_int, double ti
 
 
 // Leave the machine in a consistent state
-void clean(vector<Task> &tasklist)
+void clean(vector<Task> &tasklist, CAT &cat)
 {
+	cat.cleanup();
+	pcm_clean();
+
+	// Try to drop privileges before killing anything
+	drop_privileges();
+
 	for (auto &task : tasklist)
 		task_kill(task);
-	cat_reset();
-	pcm_clean();
 }
 
 
-void clean_and_die(vector<Task> &tasklist)
+void clean_and_die(vector<Task> &tasklist, CAT &cat)
 {
 	cerr << "--- PANIC, TRYING TO CLEAN ---" << endl;
 
-	for (auto &task : tasklist)
-	{
-		try
-		{
-			task_kill(task);
-		}
-		catch (const std::exception &e)
-		{
-			cerr << "Could not kill task " << task.cmd << "with pid " << task.pid << ": " << e.what() << endl;
-		}
-	}
-
 	try
 	{
-		cat_reset();
+		cat.reset();
 	}
 	catch (const std::exception &e)
 	{
@@ -385,6 +374,22 @@ void clean_and_die(vector<Task> &tasklist)
 		cerr << "Could not clean PCM: " << e.what() << endl;
 	}
 
+	// Try to drop privileges before killing anything
+	drop_privileges();
+
+	for (auto &task : tasklist)
+	{
+		try
+		{
+			if (task.pid > 0)
+				task_kill(task);
+		}
+		catch (const std::exception &e)
+		{
+			cerr << "Could not kill task " << task.cmd << "with pid " << task.pid << ": " << e.what() << endl;
+		}
+	}
+
 	exit(EXIT_FAILURE);
 }
 
@@ -395,27 +400,19 @@ void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslis
 
 	// Setup COS
 	if (config["cos"])
-		coslist = config_cos(config);
+		coslist = config_read_cos(config);
 
 	// Read tasks into objects
 	if (config["tasks"])
-		tasklist = config_tasks(config);
-
-	// Link tasks and COS
-	for (size_t i = 0; i < tasklist.size(); i++)
-	{
-		int cos = tasklist[i].cos;
-		if (cos != 0)
-			coslist[cos].tasks.push_back(i);
-	}
+		tasklist = config_read_tasks(config);
 
 	// Check that all COS (but 0) have cpus or tasks assigned
-	// for (size_t i = 1; i < coslist.size(); i++)
-	// {
-	// 	const auto &cos = coslist[i];
-	// 	if (cos.cpus.none() && cos.tasks.size() == 0)
-	// 		throw std::runtime_error("COS " + to_string(i) + " has no assigned CPU nor task");
-	// }
+	for (size_t i = 1; i < coslist.size(); i++)
+	{
+		const auto &cos = coslist[i];
+		if (cos.cpus.empty())
+			cerr << "Warning: COS " + to_string(i) + " has no assigned CPUs" << endl;
+	}
 }
 
 
@@ -429,9 +426,8 @@ int main(int argc, char *argv[])
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
 		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
+		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
-		// ("run,r", po::value<string>(), "file with lines like: <coreaffinity> <command>")
-		// ("max-intervals", po::value<size_t>()->default_value(numeric_limits<size_t>::max()), "stop after this number of intervals.")
 		;
 
 	bool option_error = false;
@@ -448,7 +444,7 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		cout << "Error: " << e.what() << "\n\n";
+		cerr << "Error: " << e.what() << "\n\n";
 		option_error = true;
 	}
 
@@ -459,10 +455,10 @@ int main(int argc, char *argv[])
 	}
 
 	// Open output file if needed; if not, use cout
-	std::ofstream file;
+	auto file = std::ofstream();
 	if (vm.count("output"))
 		file = open_ofstream(vm["output"].as<string>());
-	std::ostream &out = file ? file : cout;
+	std::ostream &out = file.is_open() ? file : cout;
 
 	// Read config
 	auto tasklist = vector<Task>();
@@ -480,27 +476,28 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	auto cat = CAT();
 	try
 	{
 		// Configure PCM
 		pcm_setup(vm["event"].as<vector<string>>());
 
+		// Configure CAT
+		cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
+
 		// Execute and immediately pause tasks
 		for (auto &task : tasklist)
 			task_execute(task);
 
-		// Configure CAT
-		cat_setup(coslist, tasklist);
-
 		// Start doing things
-		loop(tasklist, coslist, vm["ti"].as<double>(), vm["tm"].as<double>(), out);
+		loop(tasklist, coslist, cat, vm["ti"].as<double>(), vm["tm"].as<double>(), out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
-		clean(tasklist);
+		clean(tasklist, cat);
 	}
 	catch(const std::exception &e)
 	{
-		cerr << "ERROR: " << e.what() << endl;
-		clean_and_die(tasklist);
+		cerr << "Error: " << e.what() << endl;
+		clean_and_die(tasklist, cat);
 	}
 }

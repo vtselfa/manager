@@ -20,7 +20,7 @@ UNAME:=$(shell uname)
 
 ifeq ($(UNAME), Linux)
 LIB= -pthread -lrt -lboost_program_options -lglib-2.0
-CXXFLAGS += -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -std=c++0x
+CXXFLAGS += -I/home/viselol/src/intel-cmt-cat/lib -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -std=c++0x
 endif
 ifeq ($(UNAME), Darwin)
 LIB= -lpthread /usr/lib/libPcmMsr.dylib 
@@ -63,8 +63,8 @@ OBJS = $(COMMON_OBJS) $(EXE_OBJS)
 nice:
 	uncrustify --replace -c ~/uncrustify.cfg *.cpp *.h WinMSRDriver/Win7/*.h WinMSRDriver/Win7/*.c WinMSRDriver/WinXP/*.h WinMSRDriver/WinXP/*.c  PCM_Win/*.h PCM_Win/*.cpp  
 
-manager: common.o cat.o manager.o manager_pcm.o $(COMMON_OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_system -lboost_filesystem -lyaml-cpp
+manager: common.o cat-intel.o manager.o manager_pcm.o $(COMMON_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -L/home/viselol/src/intel-cmt-cat/lib -lboost_system -lboost_filesystem -lyaml-cpp -lpqos
 
 cat-demo: common.o cat.o cat-demo.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -lboost_system -lboost_filesystem 
