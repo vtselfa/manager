@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <sstream>
 #include <thread>
 
 #include <fcntl.h>
@@ -11,7 +12,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
+#include <boost/algorithm/string/replace.hpp>
 #include <glib.h>
 #include <yaml-cpp/yaml.h>
 
@@ -20,6 +23,7 @@
 #include "manager_pcm.hpp"
 
 
+namespace fs = boost::filesystem;
 namespace po = boost::program_options;
 namespace chr = std::chrono;
 
@@ -43,11 +47,17 @@ struct Cos
 
 struct Task
 {
-	string cmd;
+	const string cmd;
 	vector<int> cpus; // Allowed cpus
+	const string out;       // Stdout redirection
+	const string in;        // Stdin redirection
+	const string err;       // Stderr redirection
+	const string skel;      // Directory containing files and folders to copy to rundir
+
+	string rundir;    // Set before executing the task
 	int pid;          // Set after executing the task
 
-	Task(string cmd, vector<int> cpus, int pid = 0) : cmd(cmd), cpus(cpus), pid(pid) {}
+	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel) : cmd(cmd), cpus(cpus), out(out), in(in), err(err), skel(skel), pid(0) {}
 };
 
 
@@ -93,10 +103,23 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 	auto result = vector<Task>();
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
+		if (!tasks[i]["app"])
+			throw std::runtime_error("Each task must have an app dictionary with at leask the key cmd, and optionally the keys stdout, stdin, stderr and skel");
+
+		const auto &app = tasks[i]["app"];
+
 		// Commandline
-		if (!tasks[i]["cmd"])
+		if (!app["cmd"])
 			throw std::runtime_error("Each task must have a cmd");
-		string cmd = tasks[i]["cmd"].as<string>();
+		string cmd = app["cmd"].as<string>();
+
+		// Dir containing files to copy to rundir
+		string skel = app["skel"] ? app["skel"].as<string>() : "";
+
+		// Stdin/out/err redirection
+		string output = app["stdout"] ? app["stdout"].as<string>() : "out";
+		string input = app["stdin"] ? app["stdin"].as<string>() : "";
+		string error = app["stderr"] ? app["stderr"].as<string>() : "err";
 
 		// CPUS
 		auto cpus = vector<int>(); // Default, no affinity
@@ -110,9 +133,58 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 			}
 		}
 
-		result.push_back(Task(cmd, cpus));
+		result.push_back(Task(cmd, cpus, output, input, error, skel));
 	}
 	return result;
+}
+
+
+void dir_copy(const string source, const string dest)
+{
+    if (!fs::exists(source) || !fs::is_directory(source))
+        throw std::runtime_error("Source directory " + source + " does not exist or is not a directory");
+    if (fs::exists(dest))
+        throw std::runtime_error("Destination directory " + dest + " already exists");
+    if (!fs::create_directories(dest))
+        throw std::runtime_error("Cannot create destination directory " + dest);
+
+    typedef fs::recursive_directory_iterator RDIter;
+    for (auto it = RDIter(source), end = RDIter(); it != end; ++it)
+    {
+        const auto &path = it->path();
+        auto relpath = it->path().string();
+        boost::replace_first(relpath, source, ""); // Convert the path to a relative path
+
+        fs::copy(path, dest + "/" + relpath);
+    }
+}
+
+
+void tasks_set_rundirs(vector<Task> &tasklist, const string &rundir_base)
+{
+	for (size_t i = 0; i < tasklist.size(); i++)
+	{
+		auto &task = tasklist[i];
+		string binary;
+		if (!std::getline(std::istringstream(task.cmd), binary, ' '))
+			throw std::runtime_error("This cmd '" + task.cmd + "' seems wrong");
+		binary = fs::basename(binary);
+		task.rundir = rundir_base + "/" + to_string(i) + "-" + binary;
+		if (fs::exists(task.rundir))
+			throw std::runtime_error("The rundir '" + task.rundir + "' already exists");
+	}
+}
+
+
+void task_create_rundir(const Task &task)
+{
+	// Create rundir, either empty or with the files from the skel dir
+	if (task.skel != "")
+		dir_copy(task.skel, task.rundir);
+	else
+		if (!fs::create_directories(task.rundir))
+        	throw std::runtime_error("Could not create rundir directory " + task.rundir);
+
 }
 
 
@@ -204,6 +276,9 @@ void drop_privileges()
 	const uid_t uid = std::stol(uidstr);
 	const gid_t gid = std::stol(gidstr);
 
+	if (uid == getuid() && gid == getgid())
+		return;
+
 	if (setgid(gid) < 0)
 		throw std::runtime_error("Cannot change gid: " + string(strerror(errno)));
 
@@ -246,17 +321,45 @@ void task_execute(Task &task)
 					cerr << "Failed to drop privileges: " + string(e.what()) << endl;
 				}
 
-				// Redirect STDOUT to /dev/null
-				int devnull = open("/dev/null", O_WRONLY);
-				if (devnull < 0)
+				// Create rundir with the necessary files and cd into it
+				try
 				{
-					cerr << "Failed to start program '" + task.cmd + "', could not open /dev/null" << endl;
+					task_create_rundir(task);
+				}
+				catch (const std::exception &e)
+				{
+					cerr << "Could not create rundir: " + string(e.what()) << endl;
 					exit(EXIT_FAILURE);
 				}
-				if (dup2(devnull, STDOUT_FILENO) < 0)
+				fs::current_path(task.rundir);
+
+				// Redirect OUT/IN/ERR
+				if (task.in != "")
 				{
-					cerr << "Failed to start program '" + task.cmd + "', could not redirect STDOUT to /dev/null" << endl;
-					exit(EXIT_FAILURE);
+					fclose(stdin);
+					if (fopen(task.in.c_str(), "r") == NULL)
+					{
+						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.in << endl;
+						exit(EXIT_FAILURE);
+					}
+				}
+				if (task.out != "")
+				{
+					fclose(stdout);
+					if (fopen(task.out.c_str(), "w") == NULL)
+					{
+						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.out << endl;
+						exit(EXIT_FAILURE);
+					}
+				}
+				if (task.err != "")
+				{
+					fclose(stderr);
+					if (fopen(task.err.c_str(), "w") == NULL)
+					{
+						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.err << endl;
+						exit(EXIT_FAILURE);
+					}
 				}
 
 				// Exec
@@ -358,7 +461,8 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 
 	try
 	{
-		cat.reset();
+		if (cat.is_initialized())
+			cat.reset();
 	}
 	catch (const std::exception &e)
 	{
@@ -386,7 +490,7 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 		}
 		catch (const std::exception &e)
 		{
-			cerr << "Could not kill task " << task.cmd << "with pid " << task.pid << ": " << e.what() << endl;
+			cerr << e.what() << endl;
 		}
 	}
 
@@ -416,13 +520,34 @@ void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslis
 }
 
 
+std::string random_string(size_t length)
+{
+    auto randchar = []() -> char
+    {
+        const char charset[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+        const size_t max_index = (sizeof(charset) - 1);
+        return charset[ rand() % max_index ];
+    };
+    std::string str(length,0);
+    std::generate_n( str.begin(), length, randchar );
+    return str;
+}
+
+
 int main(int argc, char *argv[])
 {
+	srand(time(NULL));
+
 	po::options_description desc("Allowed options");
 	desc.add_options()
 		("help,h", "print usage message")
 		("config,c", po::value<string>()->required(), "pathname for yaml config file")
 		("output,o", po::value<string>(), "pathname for output")
+		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
+		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
 		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
@@ -469,7 +594,13 @@ int main(int argc, char *argv[])
 		// Read config and set tasklist and coslist
 		config_file = vm["config"].as<string>();
 		config_read(config_file, tasklist, coslist);
+		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
+    catch(const YAML::ParserException &e)
+	{
+        cerr << string("Error in config file in line: ") + to_string(e.mark.line) + " col: " + to_string(e.mark.column) + " pos: " + to_string(e.mark.pos) + ": " + e.msg << endl;
+		exit(EXIT_FAILURE);
+    }
 	catch(const std::exception &e)
 	{
 		cerr << "Error in config file '" + config_file + "': " << e.what() << endl;
