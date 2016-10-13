@@ -20,5 +20,6 @@ class CAT
 	void set_cos_mask(uint32_t cos, uint64_t mask, uint32_t socket=0);
 	void set_cos_cpu(uint32_t cos, uint32_t core);
 	void reset();
+	bool is_initialized() { return initialized; }
 	void print();
 };
