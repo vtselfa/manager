@@ -68,7 +68,7 @@ struct Task
 
 	Task() = default;
 	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instructions) :
-			cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
+		cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
 
 	// Reset stats and limit flag
 	void reset()
@@ -182,22 +182,22 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 
 void dir_copy(const string source, const string dest)
 {
-    if (!fs::exists(source) || !fs::is_directory(source))
-        throw std::runtime_error("Source directory " + source + " does not exist or is not a directory");
-    if (fs::exists(dest))
-        throw std::runtime_error("Destination directory " + dest + " already exists");
-    if (!fs::create_directories(dest))
-        throw std::runtime_error("Cannot create destination directory " + dest);
+	if (!fs::exists(source) || !fs::is_directory(source))
+		throw std::runtime_error("Source directory " + source + " does not exist or is not a directory");
+	if (fs::exists(dest))
+		throw std::runtime_error("Destination directory " + dest + " already exists");
+	if (!fs::create_directories(dest))
+		throw std::runtime_error("Cannot create destination directory " + dest);
 
-    typedef fs::recursive_directory_iterator RDIter;
-    for (auto it = RDIter(source), end = RDIter(); it != end; ++it)
-    {
-        const auto &path = it->path();
-        auto relpath = it->path().string();
-        boost::replace_first(relpath, source, ""); // Convert the path to a relative path
+	typedef fs::recursive_directory_iterator RDIter;
+	for (auto it = RDIter(source), end = RDIter(); it != end; ++it)
+	{
+		const auto &path = it->path();
+		auto relpath = it->path().string();
+		boost::replace_first(relpath, source, ""); // Convert the path to a relative path
 
-        fs::copy(path, dest + "/" + relpath);
-    }
+		fs::copy(path, dest + "/" + relpath);
+	}
 }
 
 
@@ -220,7 +220,7 @@ void task_create_rundir(const Task &task)
 		dir_copy(task.skel, task.rundir);
 	else
 		if (!fs::create_directories(task.rundir))
-        	throw std::runtime_error("Could not create rundir directory " + task.rundir);
+			throw std::runtime_error("Could not create rundir directory " + task.rundir);
 
 }
 
@@ -346,76 +346,76 @@ void task_execute(Task &task)
 	switch (pid) {
 		// Child
 		case 0:
+		{
+			// Set CPU affinity
+			cpu_set_t mask;
+			CPU_ZERO(&mask);
+			for (size_t i = 0; i < task.cpus.size(); i++)
+				CPU_SET(task.cpus[i], &mask);
+			if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
 			{
-				// Set CPU affinity
-				cpu_set_t mask;
-				CPU_ZERO(&mask);
-				for (size_t i = 0; i < task.cpus.size(); i++)
-					CPU_SET(task.cpus[i], &mask);
-				if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
-				{
-					cerr << "Could not set CPU affinity: " << strerror(errno) << endl;
-					exit(EXIT_FAILURE);
-				}
-
-				// Drop sudo privileges
-				try
-				{
-					drop_privileges();
-				}
-				catch (const std::exception &e)
-				{
-					cerr << "Failed to drop privileges: " + string(e.what()) << endl;
-				}
-
-				// Create rundir with the necessary files and cd into it
-				try
-				{
-					task_create_rundir(task);
-				}
-				catch (const std::exception &e)
-				{
-					cerr << "Could not create rundir: " + string(e.what()) << endl;
-					exit(EXIT_FAILURE);
-				}
-				fs::current_path(task.rundir);
-
-				// Redirect OUT/IN/ERR
-				if (task.in != "")
-				{
-					fclose(stdin);
-					if (fopen(task.in.c_str(), "r") == NULL)
-					{
-						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.in << endl;
-						exit(EXIT_FAILURE);
-					}
-				}
-				if (task.out != "")
-				{
-					fclose(stdout);
-					if (fopen(task.out.c_str(), "w") == NULL)
-					{
-						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.out << endl;
-						exit(EXIT_FAILURE);
-					}
-				}
-				if (task.err != "")
-				{
-					fclose(stderr);
-					if (fopen(task.err.c_str(), "w") == NULL)
-					{
-						cerr << "Failed to start program '" + task.cmd + "', could not open " + task.err << endl;
-						exit(EXIT_FAILURE);
-					}
-				}
-
-				// Exec
-				execvp(argv[0], argv);
-
-				// Should not reach this
-				cerr << "Failed to start program '" + task.cmd + "'" << endl;
+				cerr << "Could not set CPU affinity: " << strerror(errno) << endl;
 				exit(EXIT_FAILURE);
 			}
+
+			// Drop sudo privileges
+			try
+			{
+				drop_privileges();
+			}
+			catch (const std::exception &e)
+			{
+				cerr << "Failed to drop privileges: " + string(e.what()) << endl;
+			}
+
+			// Create rundir with the necessary files and cd into it
+			try
+			{
+				task_create_rundir(task);
+			}
+			catch (const std::exception &e)
+			{
+				cerr << "Could not create rundir: " + string(e.what()) << endl;
+				exit(EXIT_FAILURE);
+			}
+			fs::current_path(task.rundir);
+
+			// Redirect OUT/IN/ERR
+			if (task.in != "")
+			{
+				fclose(stdin);
+				if (fopen(task.in.c_str(), "r") == NULL)
+				{
+					cerr << "Failed to start program '" + task.cmd + "', could not open " + task.in << endl;
+					exit(EXIT_FAILURE);
+				}
+			}
+			if (task.out != "")
+			{
+				fclose(stdout);
+				if (fopen(task.out.c_str(), "w") == NULL)
+				{
+					cerr << "Failed to start program '" + task.cmd + "', could not open " + task.out << endl;
+					exit(EXIT_FAILURE);
+				}
+			}
+			if (task.err != "")
+			{
+				fclose(stderr);
+				if (fopen(task.err.c_str(), "w") == NULL)
+				{
+					cerr << "Failed to start program '" + task.cmd + "', could not open " + task.err << endl;
+					exit(EXIT_FAILURE);
+				}
+			}
+
+			// Exec
+			execvp(argv[0], argv);
+
+			// Should not reach this
+			cerr << "Failed to start program '" + task.cmd + "'" << endl;
+			exit(EXIT_FAILURE);
+		}
 
 			// Error
 		case -1:
@@ -482,7 +482,7 @@ vector<uint32_t> tasks_cores_used(const vector<Task> &tasklist)
 	auto res = vector<uint32_t>();
 	for (const auto &task : tasklist)
 		res.push_back(task.cpus[0]);
-		//TODO: Ensure no more than one CPU per task and that there are no repeated CPUs
+	//TODO: Ensure no more than one CPU per task and that there are no repeated CPUs
 	return res;
 }
 
@@ -638,18 +638,18 @@ void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslis
 
 std::string random_string(size_t length)
 {
-    auto randchar = []() -> char
-    {
-        const char charset[] =
-        "0123456789"
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz";
-        const size_t max_index = (sizeof(charset) - 1);
-        return charset[ rand() % max_index ];
-    };
-    std::string str(length,0);
-    std::generate_n( str.begin(), length, randchar );
-    return str;
+	auto randchar = []() -> char
+	{
+		const char charset[] =
+			"0123456789"
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+			"abcdefghijklmnopqrstuvwxyz";
+		const size_t max_index = (sizeof(charset) - 1);
+		return charset[ rand() % max_index ];
+	};
+	std::string str(length,0);
+	std::generate_n( str.begin(), length, randchar );
+	return str;
 }
 
 
@@ -712,11 +712,11 @@ int main(int argc, char *argv[])
 		config_read(config_file, tasklist, coslist);
 		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
-    catch(const YAML::ParserException &e)
+	catch(const YAML::ParserException &e)
 	{
-        cerr << string("Error in config file in line: ") + to_string(e.mark.line) + " col: " + to_string(e.mark.column) + " pos: " + to_string(e.mark.pos) + ": " + e.msg << endl;
+		cerr << string("Error in config file in line: ") + to_string(e.mark.line) + " col: " + to_string(e.mark.column) + " pos: " + to_string(e.mark.pos) + ": " + e.msg << endl;
 		exit(EXIT_FAILURE);
-    }
+	}
 	catch(const std::exception &e)
 	{
 		cerr << "Error in config file '" + config_file + "': " << e.what() << endl;
