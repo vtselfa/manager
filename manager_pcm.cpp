@@ -23,9 +23,6 @@ struct CoreEvent
 };
 
 
-// Global variables
-const int MAX_EVENTS = 4;
-
 PCM *m;
 uint64 BeforeTime = 0, AfterTime = 0;
 SystemCounterState SysBeforeState, SysAfterState;
@@ -259,14 +256,72 @@ void pcm_after(std::ostream &out)
 			out << " " << setw(3) << i << "   " << setw(2) ;
 		print_custom_stats(BeforeState[i], AfterState[i], out, use_csv);
 	}
+}
 
-	std::swap(BeforeTime, AfterTime);
-	std::swap(BeforeState, AfterState);
-	std::swap(SysBeforeState, SysAfterState);
+
+vector<Stats> pcm_after(const vector<uint32_t> &cores)
+{
+	auto res = vector<Stats>();
+
+	AfterTime = m->getTickCount();
+	m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
+	for (const auto &core : cores)
+	{
+		if (!m->isCoreOnline(core))
+			throw std::runtime_error("Core " + to_string(core) + " is not online");
+
+		Stats stats =
+		{
+			.ms = AfterTime - BeforeTime,
+			.cycles = getCycles(BeforeState[core], AfterState[core]),
+			.instructions = getInstructionsRetired(BeforeState[core], AfterState[core]),
+		};
+		for (int i = 0; i < MAX_EVENTS; ++i)
+			stats.event[i] = getNumberOfCustomEvents(i, BeforeState[core], AfterState[core]);
+
+		res.push_back(stats);
+	}
+	return res;
 }
 
 
 void pcm_clean()
 {
 	PCM::getInstance()->cleanup();
+}
+
+
+void Stats::print(std::ostream &out, bool csv_format)
+{
+	const double ipc = double(instructions) / double(cycles);
+	if (csv_format)
+	{
+		out << ipc << ",";
+		out << instructions << ",";
+		out << cycles << ",";
+		out << ms << ",";
+	}
+	else
+	{
+		out << setw(10) << ipc;
+		out << setw(14) << unit_format(instructions);
+		out << setw(11) << unit_format(cycles);
+		out << setw(11) << ms;
+	}
+
+	for (int i = 0; i < MAX_EVENTS; ++i)
+	{
+		if(csv_format)
+		{
+			out << event[i];
+			if (i < MAX_EVENTS - 1)
+				out << ",";
+		}
+		else
+		{
+			out << setw(10);
+			out << unit_format(event[i]);
+		}
+	}
+	out << endl;
 }

@@ -35,6 +35,7 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
+string extract_executable_name(string cmd);
 
 struct Cos
 {
@@ -47,18 +48,52 @@ struct Cos
 
 struct Task
 {
+	// Set on construction
 	const string cmd;
-	vector<int> cpus; // Allowed cpus
-	const string out;       // Stdout redirection
-	const string in;        // Stdin redirection
-	const string err;       // Stderr redirection
-	const string skel;      // Directory containing files and folders to copy to rundir
+	const string executable; // Basename of the executable
+	vector<int> cpus;        // Allowed cpus
+	const string out;        // Stdout redirection
+	const string in;         // Stdin redirection
+	const string err;        // Stderr redirection
+	const string skel;       // Directory containing files and folders to copy to rundir
+	const uint64_t max_instructions; // Max number of instructions to execute
 
-	string rundir;    // Set before executing the task
-	int pid;          // Set after executing the task
+	string rundir = ""; // Set before executing the task
+	int pid       = 0;  // Set after executing the task
 
-	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel) : cmd(cmd), cpus(cpus), out(out), in(in), err(err), skel(skel), pid(0) {}
+	Stats stats_acumulated = Stats(); // From the start of the execution
+	Stats stats_interval   = Stats(); // Only last interval
+
+	bool limit_reached = false;     // Has the instruction limit been reached?
+
+	Task() = default;
+	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instructions) :
+			cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
+
+	// Reset stats and limit flag
+	void reset()
+	{
+		limit_reached = false;
+		stats_acumulated = Stats();
+		stats_interval   = Stats();
+	}
 };
+
+
+// Returns the executable basename from a commandline
+string extract_executable_name(string cmd)
+{
+	int argc;
+	char **argv;
+
+	if (!g_shell_parse_argv(cmd.c_str(), &argc, &argv, NULL))
+		throw std::runtime_error("Could not parse commandline '" + cmd + "'");
+
+	string result = fs::basename(argv[0]);
+	g_strfreev(argv); // Free the memory allocated for argv
+
+	return result;
+}
 
 
 vector<Cos> config_read_cos(const YAML::Node &config)
@@ -104,7 +139,7 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		if (!tasks[i]["app"])
-			throw std::runtime_error("Each task must have an app dictionary with at leask the key cmd, and optionally the keys stdout, stdin, stderr and skel");
+			throw std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_megainstr'");
 
 		const auto &app = tasks[i]["app"];
 
@@ -121,6 +156,9 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		string input = app["stdin"] ? app["stdin"].as<string>() : "";
 		string error = app["stderr"] ? app["stderr"].as<string>() : "err";
 
+		// Instructions limit (in millions of instructions)
+		auto max_megainstr = app["max_megainstr"] ? app["max_megainstr"].as<uint64_t>() : -1ULL;
+
 		// CPUS
 		auto cpus = vector<int>(); // Default, no affinity
 		if (tasks[i]["cpus"])
@@ -133,7 +171,10 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 			}
 		}
 
-		result.push_back(Task(cmd, cpus, output, input, error, skel));
+		// Max megainstructions override... this is for overcoming the lack of merge operand in the YAML library, don't blame me
+		max_megainstr = tasks[i]["max_megainstr"] ? tasks[i]["max_megainstr"].as<uint64_t>() : max_megainstr;
+
+		result.push_back(Task(cmd, cpus, output, input, error, skel, max_megainstr * 1000 * 1000));
 	}
 	return result;
 }
@@ -165,11 +206,7 @@ void tasks_set_rundirs(vector<Task> &tasklist, const string &rundir_base)
 	for (size_t i = 0; i < tasklist.size(); i++)
 	{
 		auto &task = tasklist[i];
-		string binary;
-		if (!std::getline(std::istringstream(task.cmd), binary, ' '))
-			throw std::runtime_error("This cmd '" + task.cmd + "' seems wrong");
-		binary = fs::basename(binary);
-		task.rundir = rundir_base + "/" + to_string(i) + "-" + binary;
+		task.rundir = rundir_base + "/" + to_string(i) + "-" + task.executable;
 		if (fs::exists(task.rundir))
 			throw std::runtime_error("The rundir '" + task.rundir + "' already exists");
 	}
@@ -185,6 +222,12 @@ void task_create_rundir(const Task &task)
 		if (!fs::create_directories(task.rundir))
         	throw std::runtime_error("Could not create rundir directory " + task.rundir);
 
+}
+
+
+void task_remove_rundir(const Task &task)
+{
+	fs::remove_all(task.rundir);
 }
 
 
@@ -309,7 +352,11 @@ void task_execute(Task &task)
 				CPU_ZERO(&mask);
 				for (size_t i = 0; i < task.cpus.size(); i++)
 					CPU_SET(task.cpus[i], &mask);
-				sched_setaffinity(0, sizeof(mask), &mask);
+				if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
+				{
+					cerr << "Could not set CPU affinity: " << strerror(errno) << endl;
+					exit(EXIT_FAILURE);
+				}
 
 				// Drop sudo privileges
 				try
@@ -392,12 +439,21 @@ void task_kill(Task &task)
 	{
 		if (kill(pid, SIGKILL) < 0)
 			throw std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno));
+		waitpid(pid, NULL, 0); // Wait until it exits...
 		task.pid = 0;
 	}
 	else
 	{
 		throw std::runtime_error("Tried to kill pid " + to_string(pid) + ", check for bugs");
 	}
+}
+
+
+void task_kill_and_restart(Task &task)
+{
+	task_kill(task);
+	task_remove_rundir(task);
+	task_execute(task);
 }
 
 
@@ -421,7 +477,17 @@ struct measure
 };
 
 
-void loop(vector<Task> tasklist, vector<Cos> coslist, CAT &cat, double time_int, double time_max, std::ostream &out)
+vector<uint32_t> tasks_cores_used(const vector<Task> &tasklist)
+{
+	auto res = vector<uint32_t>();
+	for (const auto &task : tasklist)
+		res.push_back(task.cpus[0]);
+		//TODO: Ensure no more than one CPU per task and that there are no repeated CPUs
+	return res;
+}
+
+
+void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_int, double time_max, std::ostream &out)
 {
 	if (time_int <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -429,14 +495,64 @@ void loop(vector<Task> tasklist, vector<Cos> coslist, CAT &cat, double time_int,
 		throw std::runtime_error("Max time must be positive and greater than 0");
 
 	int delay_ms = int(time_int * 1000);
+	out << "cpu, app, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
 	for (double time_elap = 0; time_elap < time_max; time_elap += time_int)
 	{
+		auto cores             = tasks_cores_used(tasklist);
+		bool all_limit_reached = true; // Have all the tasks reached their execution limit?
+
 		// Run for some time and pause
 		tasks_resume(tasklist);
 		pcm_before();
 		sleep_for(chr::milliseconds(delay_ms));
-		pcm_after(out);
+		auto stats = pcm_after(cores);
 		tasks_pause(tasklist);
+
+		// Process tasks...
+		for (size_t i = 0; i < tasklist.size(); i++)
+		{
+			auto &task = tasklist[i];
+
+			// The task did not reach any exec limit during the last iteration
+			if (!task.limit_reached)
+			{
+				// Count stats
+				task.stats_interval = stats[i];
+				task.stats_acumulated += stats[i];
+
+				// Print stats
+				out << task.cpus[0]    << ", ";
+				out << task.executable << ", ";
+				task.stats_interval.print(out);
+				// task.stats_acumulated.print(out);
+
+				// Instruction limit reached
+				if (task.stats_acumulated.instructions >= task.max_instructions)
+					task.limit_reached = true;
+
+				// At least this task has not reached its instruction limit
+				else
+					all_limit_reached = false;
+			}
+
+		}
+
+		// All the tasks have reached their limit -> finish execution
+		if (all_limit_reached)
+			break;
+
+		// Restart the ones that have reached their limit
+		else
+		{
+			for (auto &task : tasklist)
+			{
+				if (task.limit_reached)
+				{
+					task_kill_and_restart(task);
+					task.reset();
+				}
+			}
+		}
 	}
 }
 
