@@ -471,9 +471,11 @@ void task_kill(Task &task)
 }
 
 
+// Kill and restart a task
 void task_kill_and_restart(Task &task)
 {
 	task_kill(task);
+	task.reset();
 	task_remove_rundir(task);
 	task_execute(task);
 }
@@ -509,16 +511,12 @@ vector<uint32_t> tasks_cores_used(const vector<Task> &tasklist)
 }
 
 
-void tasks_restart(vector<Task> &tasklist)
+// Kill and restart the tasks that have reached their exec limit
+void tasks_kill_and_restart(vector<Task> &tasklist)
 {
 	for (auto &task : tasklist)
-	{
 		if (task.limit_reached)
-		{
 			task_kill_and_restart(task);
-			task.reset();
-		}
-	}
 }
 
 
@@ -614,7 +612,7 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 
 		// Restart the ones that have reached their limit
 		else
-			tasks_restart(tasklist);
+			tasks_kill_and_restart(tasklist);
 
 		// Update time and interval
 		interval++;
