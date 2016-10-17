@@ -35,7 +35,7 @@ struct Stats
     	return a;
 	}
 
-	void print(std::ostream &out, bool csv_format = true);
+	void print(std::ostream &out, bool csv_format = true) const;
 };
 
 std::vector<Stats> pcm_after(const std::vector<uint32_t> &cores);

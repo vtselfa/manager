@@ -291,7 +291,7 @@ void pcm_clean()
 }
 
 
-void Stats::print(std::ostream &out, bool csv_format)
+void Stats::print(std::ostream &out, bool csv_format) const
 {
 	const double ipc = double(instructions) / double(cycles);
 	if (csv_format)

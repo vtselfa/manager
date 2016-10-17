@@ -1,5 +1,8 @@
-#include <iostream>
+#include <atomic>
 #include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <thread>
 
@@ -15,6 +18,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/io/ios_state.hpp>
 #include <glib.h>
 #include <yaml-cpp/yaml.h>
 
@@ -48,7 +52,11 @@ struct Cos
 
 struct Task
 {
+	// Number of tasks created
+	static std::atomic<uint32_t> ID;
+
 	// Set on construction
+	uint32_t id;
 	const string cmd;
 	const string executable; // Basename of the executable
 	vector<int> cpus;        // Allowed cpus
@@ -65,10 +73,11 @@ struct Task
 	Stats stats_interval   = Stats(); // Only last interval
 
 	bool limit_reached = false;     // Has the instruction limit been reached?
+	bool completed = false;          // Do not print stats
 
-	Task() = default;
+	Task() = delete;
 	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instructions) :
-		cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
+		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
 
 	// Reset stats and limit flag
 	void reset()
@@ -78,6 +87,7 @@ struct Task
 		stats_interval   = Stats();
 	}
 };
+std::atomic<uint32_t> Task::ID(0);
 
 
 // Returns the executable basename from a commandline
@@ -487,72 +497,116 @@ vector<uint32_t> tasks_cores_used(const vector<Task> &tasklist)
 }
 
 
-void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_int, double time_max, std::ostream &out)
+void tasks_restart(vector<Task> &tasklist)
+{
+	for (auto &task : tasklist)
+	{
+		if (task.limit_reached)
+		{
+			task_kill_and_restart(task);
+			task.reset();
+		}
+	}
+}
+
+
+void stats_print(const Stats &stats, std::ostream &out, uint32_t cpu, uint32_t id, const string &app, uint64_t interval = -1ULL)
+{
+	boost::io::ios_all_saver guard(out); // Saves current flags and format
+
+	if (interval != -1ULL)
+		out << interval << ", ";
+
+	out << cpu << ", ";
+	out << std::setfill('0') << std::setw(2) << id << "_" << app << ", ";
+	stats.print(out);
+}
+
+
+
+void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_int, double time_max, std::ostream &out, std::ostream &fin_out)
 {
 	if (time_int <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
 	if (time_max <= 0)
 		throw std::runtime_error("Max time must be positive and greater than 0");
 
-	int delay_ms = int(time_int * 1000);
-	out << "cpu, app, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
-	for (double time_elap = 0; time_elap < time_max; time_elap += time_int)
+	// For adjusting the time sleeping
+	const int delay_us       = int(time_int * 1000 * 1000);
+	const double kp          = 0.5;
+	const int initial_offset = 17000; // Empirically determined
+	int adj_delay_us         = delay_us - initial_offset;
+
+	// Time / intervals passed
+	uint64_t interval = 0;
+	double time_elap = 0;
+
+	// Print headers
+	out     << "interval, cpu, app_id, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
+	fin_out <<           "cpu, app_id, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
+
+	// Loop
+	while (time_elap < time_max)
 	{
 		auto cores             = tasks_cores_used(tasklist);
-		bool all_limit_reached = true; // Have all the tasks reached their execution limit?
+		bool all_completed     = true; // Have all the tasks reached their execution limit?
 
 		// Run for some time and pause
 		tasks_resume(tasklist);
 		pcm_before();
-		sleep_for(chr::milliseconds(delay_ms));
+		sleep_for(chr::microseconds(adj_delay_us));
 		auto stats = pcm_after(cores);
 		tasks_pause(tasklist);
+
+		// Adjust time...
+		adj_delay_us = adj_delay_us + kp * (delay_us - (int) stats[0].ms * 1000);
 
 		// Process tasks...
 		for (size_t i = 0; i < tasklist.size(); i++)
 		{
 			auto &task = tasklist[i];
 
-			// The task did not reach any exec limit during the last iteration
-			if (!task.limit_reached)
+			// Count stats
+			task.stats_interval    = stats[i];
+			task.stats_acumulated += stats[i];
+
+			// Instruction limit reached
+			if (task.stats_acumulated.instructions >= task.max_instructions)
 			{
-				// Count stats
-				task.stats_interval = stats[i];
-				task.stats_acumulated += stats[i];
+				task.limit_reached = true;
 
-				// Print stats
-				out << task.cpus[0]    << ", ";
-				out << task.executable << ", ";
-				task.stats_interval.print(out);
-				// task.stats_acumulated.print(out);
+				// It's the first time it reaches the limit
+				if (!task.completed)
+				{
+					task.completed = true;
 
-				// Instruction limit reached
-				if (task.stats_acumulated.instructions >= task.max_instructions)
-					task.limit_reached = true;
+					// Print interval stats for the last time
+					stats_print(task.stats_interval, out, task.cpus[0], task.id, task.executable, interval);
 
-				// At least this task has not reached its instruction limit
-				else
-					all_limit_reached = false;
+					// Print acumulated stats
+					stats_print(task.stats_acumulated, fin_out, task.cpus[0], task.id, task.executable);
+				}
 			}
 
+			// This task has never reached any limits
+			if (!task.completed)
+			{
+				all_completed = false;
+				stats_print(task.stats_interval, out, task.cpus[0], task.id, task.executable, interval);
+			}
 		}
 
 		// All the tasks have reached their limit -> finish execution
-		if (all_limit_reached)
+		if (all_completed)
 			break;
 
 		// Restart the ones that have reached their limit
 		else
-		{
-			for (auto &task : tasklist)
-			{
-				if (task.limit_reached)
-				{
-					task_kill_and_restart(task);
-					task.reset();
-				}
-			}
-		}
+			tasks_restart(tasklist);
+
+		// Update time and interval
+		interval++;
+		time_elap += stats[0].ms / 1000.0;
 	}
 }
 
@@ -662,6 +716,7 @@ int main(int argc, char *argv[])
 		("help,h", "print usage message")
 		("config,c", po::value<string>()->required(), "pathname for yaml config file")
 		("output,o", po::value<string>(), "pathname for output")
+		("fin-output", po::value<string>()->default_value("/dev/null"), "pathname for output values when tasks are completed")
 		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
 		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
@@ -701,6 +756,9 @@ int main(int argc, char *argv[])
 		file = open_ofstream(vm["output"].as<string>());
 	std::ostream &out = file.is_open() ? file : cout;
 
+	// Output file for final output
+	auto fin_out = open_ofstream(vm["fin-output"].as<string>());
+
 	// Read config
 	auto tasklist = vector<Task>();
 	auto coslist = vector<Cos>();
@@ -737,7 +795,7 @@ int main(int argc, char *argv[])
 			task_execute(task);
 
 		// Start doing things
-		loop(tasklist, coslist, cat, vm["ti"].as<double>(), vm["tm"].as<double>(), out);
+		loop(tasklist, coslist, cat, vm["ti"].as<double>(), vm["tm"].as<double>(), out, fin_out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, cat);
