@@ -542,14 +542,14 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 		throw std::runtime_error("Max time must be positive and greater than 0");
 
 	// For adjusting the time sleeping
-	const int delay_us       = int(time_int * 1000 * 1000);
-	const double kp          = 0.5;
-	const int initial_offset = 17000; // Empirically determined
-	int adj_delay_us         = delay_us - initial_offset;
+	const uint64_t delay_us = uint64_t(time_int * 1000 * 1000);
+	uint64_t adj_delay_us   = delay_us;
+	const double kp = 0.6;
+	const double ki = 0.35;
 
 	// Time / intervals passed
 	uint64_t interval = 0;
-	double time_elap = 0;
+	double time_elap  = 0;
 
 	// Print headers
 	out     << "interval, cpu, app_id, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
@@ -567,9 +567,6 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 		sleep_for(chr::microseconds(adj_delay_us));
 		auto stats = pcm_after(cores);
 		tasks_pause(tasklist);
-
-		// Adjust time...
-		adj_delay_us = adj_delay_us + kp * (delay_us - (int) stats[0].ms * 1000);
 
 		// Process tasks...
 		for (size_t i = 0; i < tasklist.size(); i++)
@@ -617,6 +614,19 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 		// Update time and interval
 		interval++;
 		time_elap += stats[0].ms / 1000.0;
+
+		// Adjust time with a PI controller
+		int64_t proportional = (int64_t) delay_us - (int64_t) stats[0].ms * 1000;
+		int64_t integral     = (delay_us * interval - time_elap * 1000 * 1000);
+		adj_delay_us += kp * proportional;
+		adj_delay_us += ki * integral;
+	}
+
+	// Print acumulated stats for non completed tasks
+	for (const auto &task : tasklist)
+	{
+		if (!task.completed)
+			stats_print(task.stats_acumulated, fin_out, task.cpus[0], task.id, task.executable);
 	}
 
 	// For some reason killing a stopped process returns EPERM... this solves it
