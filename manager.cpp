@@ -618,6 +618,9 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 		interval++;
 		time_elap += stats[0].ms / 1000.0;
 	}
+
+	// For some reason killing a stopped process returns EPERM... this solves it
+	tasks_resume(tasklist);
 }
 
 
@@ -657,9 +660,6 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 	{
 		cerr << "Could not clean PCM: " << e.what() << endl;
 	}
-
-	// Try to drop privileges before killing anything
-	drop_privileges();
 
 	for (auto &task : tasklist)
 	{
