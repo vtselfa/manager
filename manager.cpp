@@ -58,13 +58,13 @@ struct Task
 	// Set on construction
 	uint32_t id;
 	const string cmd;
-	const string executable; // Basename of the executable
-	vector<int> cpus;        // Allowed cpus
-	const string out;        // Stdout redirection
-	const string in;         // Stdin redirection
-	const string err;        // Stderr redirection
-	const string skel;       // Directory containing files and folders to copy to rundir
-	const uint64_t max_instructions; // Max number of instructions to execute
+	const string executable;  // Basename of the executable
+	vector<int> cpus;         // Allowed cpus
+	const string out;         // Stdout redirection
+	const string in;          // Stdin redirection
+	const string err;         // Stderr redirection
+	const string skel;        // Directory containing files and folders to copy to rundir
+	const uint64_t max_instr; // Max number of instructions to execute
 
 	string rundir = ""; // Set before executing the task
 	int pid       = 0;  // Set after executing the task
@@ -72,12 +72,12 @@ struct Task
 	Stats stats_acumulated = Stats(); // From the start of the execution
 	Stats stats_interval   = Stats(); // Only last interval
 
-	bool limit_reached = false;     // Has the instruction limit been reached?
-	bool completed = false;          // Do not print stats
+	bool limit_reached = false; // Has the instruction limit been reached?
+	bool completed = false;     // Do not print stats
 
 	Task() = delete;
-	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instructions) :
-		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instructions(max_instructions) {}
+	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instr) :
+		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instr(max_instr) {}
 
 	// Reset stats and limit flag
 	void reset()
@@ -571,7 +571,7 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 			task.stats_acumulated += stats[i];
 
 			// Instruction limit reached
-			if (task.stats_acumulated.instructions >= task.max_instructions)
+			if (task.stats_acumulated.instructions >= task.max_instr)
 			{
 				task.limit_reached = true;
 
