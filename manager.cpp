@@ -343,6 +343,18 @@ void drop_privileges()
 }
 
 
+void set_cpu_affinity(vector<int> cpus)
+{
+	// Set CPU affinity
+	cpu_set_t mask;
+	CPU_ZERO(&mask);
+	for (auto cpu : cpus)
+		CPU_SET(cpu, &mask);
+	if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
+		throw std::runtime_error("Could not set CPU affinity: " + string(strerror(errno)));
+}
+
+
 // Execute a task and immediately pause it
 void task_execute(Task &task)
 {
@@ -358,13 +370,13 @@ void task_execute(Task &task)
 		case 0:
 		{
 			// Set CPU affinity
-			cpu_set_t mask;
-			CPU_ZERO(&mask);
-			for (size_t i = 0; i < task.cpus.size(); i++)
-				CPU_SET(task.cpus[i], &mask);
-			if (sched_setaffinity(0, sizeof(mask), &mask) < 0)
+			try
 			{
-				cerr << "Could not set CPU affinity: " << strerror(errno) << endl;
+				set_cpu_affinity(task.cpus);
+			}
+			catch (const std::exception &e)
+			{
+				cerr << "Error executing '" + task.cmd + "': " + e.what() << endl;
 				exit(EXIT_FAILURE);
 			}
 
@@ -722,6 +734,7 @@ int main(int argc, char *argv[])
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
 		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
+		("cpu-affinity", po::value<vector<int>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
 		;
@@ -749,6 +762,10 @@ int main(int argc, char *argv[])
 		cout << desc << endl;
 		exit(EXIT_SUCCESS);
 	}
+
+	// Set CPU affinity for not interfering with the executed workloads
+	if (vm.count("cpu-affinity"))
+		set_cpu_affinity(vm["cpu-affinity"].as<vector<int>>());
 
 	// Open output file if needed; if not, use cout
 	auto file = std::ofstream();
