@@ -59,7 +59,7 @@ struct Task
 	uint32_t id;
 	const string cmd;
 	const string executable;  // Basename of the executable
-	vector<int> cpus;         // Allowed cpus
+	uint32_t cpu;             // Allowed cpus
 	const string out;         // Stdout redirection
 	const string in;          // Stdin redirection
 	const string err;         // Stderr redirection
@@ -76,8 +76,8 @@ struct Task
 	bool completed = false;     // Do not print stats
 
 	Task() = delete;
-	Task(string cmd, vector<int> cpus, string out, string in, string err, string skel, uint64_t max_instr) :
-		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instr(max_instr) {}
+	Task(string cmd, uint32_t cpu, string out, string in, string err, string skel, uint64_t max_instr) :
+		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpu(cpu), out(out), in(in), err(err), skel(skel), max_instr(max_instr) {}
 
 	// Reset stats and limit flag
 	void reset()
@@ -169,22 +169,15 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		// Instructions limit (in millions of instructions)
 		auto max_megainstr = app["max_megainstr"] ? app["max_megainstr"].as<uint64_t>() : -1ULL;
 
-		// CPUS
-		auto cpus = vector<int>(); // Default, no affinity
-		if (tasks[i]["cpus"])
-		{
-			auto cpulist = tasks[i]["cpus"];
-			for (auto it = cpulist.begin(); it != cpulist.end(); it++)
-			{
-				int cpu = it->as<int>();
-				cpus.push_back(cpu);
-			}
-		}
+		// CPU affinity
+		if (!tasks[i]["cpu"])
+			throw std::runtime_error("Each task must have a cpu");
+		auto cpu = tasks[i]["cpu"].as<uint32_t>();
 
 		// Max megainstructions override... this is for overcoming the lack of merge operand in the YAML library, don't blame me
 		max_megainstr = tasks[i]["max_megainstr"] ? tasks[i]["max_megainstr"].as<uint64_t>() : max_megainstr;
 
-		result.push_back(Task(cmd, cpus, output, input, error, skel, max_megainstr * 1000 * 1000));
+		result.push_back(Task(cmd, cpu, output, input, error, skel, max_megainstr * 1000 * 1000));
 	}
 	return result;
 }
@@ -343,7 +336,7 @@ void drop_privileges()
 }
 
 
-void set_cpu_affinity(vector<int> cpus)
+void set_cpu_affinity(vector<uint32_t> cpus)
 {
 	// Set CPU affinity
 	cpu_set_t mask;
@@ -372,7 +365,7 @@ void task_execute(Task &task)
 			// Set CPU affinity
 			try
 			{
-				set_cpu_affinity(task.cpus);
+				set_cpu_affinity({task.cpu});
 			}
 			catch (const std::exception &e)
 			{
@@ -505,8 +498,7 @@ vector<uint32_t> tasks_cores_used(const vector<Task> &tasklist)
 {
 	auto res = vector<uint32_t>();
 	for (const auto &task : tasklist)
-		res.push_back(task.cpus[0]);
-	//TODO: Ensure no more than one CPU per task and that there are no repeated CPUs
+		res.push_back(task.cpu);
 	return res;
 }
 
@@ -588,10 +580,10 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 					task.completed = true;
 
 					// Print interval stats for the last time
-					stats_print(task.stats_interval, out, task.cpus[0], task.id, task.executable, interval);
+					stats_print(task.stats_interval, out, task.cpu, task.id, task.executable, interval);
 
 					// Print acumulated stats
-					stats_print(task.stats_acumulated, fin_out, task.cpus[0], task.id, task.executable);
+					stats_print(task.stats_acumulated, fin_out, task.cpu, task.id, task.executable);
 				}
 			}
 
@@ -599,7 +591,7 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 			if (!task.completed)
 			{
 				all_completed = false;
-				stats_print(task.stats_interval, out, task.cpus[0], task.id, task.executable, interval);
+				stats_print(task.stats_interval, out, task.cpu, task.id, task.executable, interval);
 			}
 		}
 
@@ -626,7 +618,7 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 	for (const auto &task : tasklist)
 	{
 		if (!task.completed)
-			stats_print(task.stats_acumulated, fin_out, task.cpus[0], task.id, task.executable);
+			stats_print(task.stats_acumulated, fin_out, task.cpu, task.id, task.executable);
 	}
 
 	// For some reason killing a stopped process returns EPERM... this solves it
@@ -742,7 +734,7 @@ int main(int argc, char *argv[])
 		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
 		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
-		("cpu-affinity", po::value<vector<int>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
+		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
 		;
@@ -773,7 +765,7 @@ int main(int argc, char *argv[])
 
 	// Set CPU affinity for not interfering with the executed workloads
 	if (vm.count("cpu-affinity"))
-		set_cpu_affinity(vm["cpu-affinity"].as<vector<int>>());
+		set_cpu_affinity(vm["cpu-affinity"].as<vector<uint32_t>>());
 
 	// Open output file if needed; if not, use cout
 	auto file = std::ofstream();
