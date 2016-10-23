@@ -1,6 +1,7 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -526,39 +527,42 @@ void stats_print(const Stats &stats, std::ostream &out, uint32_t cpu, uint32_t i
 
 
 
-void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_int, double time_max, std::ostream &out, std::ostream &fin_out)
+void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
 {
-	if (time_int <= 0)
+	if (time_int_us <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
-	if (time_max <= 0)
+	if (max_int <= 0)
 		throw std::runtime_error("Max time must be positive and greater than 0");
 
 	// For adjusting the time sleeping
-	const uint64_t delay_us = uint64_t(time_int * 1000 * 1000);
-	uint64_t adj_delay_us   = delay_us;
-	const double kp = 0.6;
-	const double ki = 0.35;
+	uint64_t adj_delay_us = time_int_us;
+	uint64_t total_elapsed_us = 0;
+	const double kp = 0.5;
+	const double ki = 0.25;
 
-	// Time / intervals passed
-	uint64_t interval = 0;
-	double time_elap  = 0;
+	// The PERfCountMon class receives 3 lambdas: une for resuming task, other for waiting, and the last one for pausing the tasks.
+	// Note that each lambda captures variables by reference, specially the waiter,
+	// which captures the time to wait by reference, so when it's adjusted it's not necessary to do anithing.
+	auto resume = [&tasklist]()     { tasks_resume(tasklist); };
+	auto wait   = [&adj_delay_us]() { sleep_for(chr::microseconds(adj_delay_us));};
+	auto pause  = [&tasklist]()     { tasks_pause(tasklist); };
+	auto perf = PerfCountMon<decltype(resume), decltype(wait), decltype(pause)> (resume, wait, pause);
+	perf.mon_custom_events(events);
 
 	// Print headers
-	out     << "interval, cpu, app_id, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
-	fin_out <<           "cpu, app_id, ipc, instr, cycles, ms, ev0, ev1, ev2, ev3, ev4" << endl;
+	out     << "interval,cpu,app_id,ipc,instr,cycles,us,ev0,ev1,ev2,ev3" << endl;
+	fin_out <<          "cpu,app_id,ipc,instr,cycles,us,ev0,ev1,ev2,ev3" << endl;
 
 	// Loop
-	while (time_elap < time_max)
+	for (uint32_t interval = 0; interval < max_int; interval++)
 	{
-		auto cores             = tasks_cores_used(tasklist);
-		bool all_completed     = true; // Have all the tasks reached their execution limit?
+		auto cores         = tasks_cores_used(tasklist);
+		auto stats         = vector<Stats>();
+		bool all_completed = true; // Have all the tasks reached their execution limit?
 
-		// Run for some time and pause
-		tasks_resume(tasklist);
-		pcm_before();
-		sleep_for(chr::microseconds(adj_delay_us));
-		auto stats = pcm_after(cores);
-		tasks_pause(tasklist);
+		// Run for some time, take stats and pause
+		uint64_t elapsed_us = perf.measure(cores, stats);
+		total_elapsed_us += elapsed_us;
 
 		// Process tasks...
 		for (size_t i = 0; i < tasklist.size(); i++)
@@ -605,13 +609,9 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 		else
 			tasks_kill_and_restart(tasklist);
 
-		// Update time and interval
-		interval++;
-		time_elap += stats[0].ms / 1000.0;
-
 		// Adjust time with a PI controller
-		int64_t proportional = (int64_t) delay_us - (int64_t) stats[0].ms * 1000;
-		int64_t integral     = (delay_us * interval - time_elap * 1000 * 1000);
+		int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
+		int64_t integral     = (int64_t) time_int_us * (interval + 1) - (int64_t) total_elapsed_us;
 		adj_delay_us += kp * proportional;
 		adj_delay_us += ki * integral;
 	}
@@ -632,7 +632,7 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 void clean(vector<Task> &tasklist, CAT &cat)
 {
 	cat.cleanup();
-	pcm_clean();
+	pcm_cleanup();
 
 	// Try to drop privileges before killing anything
 	drop_privileges();
@@ -658,11 +658,11 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 
 	try
 	{
-		pcm_clean();
+		pcm_reset();
 	}
 	catch (const std::exception &e)
 	{
-		cerr << "Could not clean PCM: " << e.what() << endl;
+		cerr << "Could not reset PCM: " << e.what() << endl;
 	}
 
 	for (auto &task : tasklist)
@@ -733,8 +733,8 @@ int main(int argc, char *argv[])
 		("fin-output", po::value<string>()->default_value("/dev/null"), "pathname for output values when tasks are completed")
 		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
 		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
-		("ti", po::value<double>()->default_value(1), "time-int, duration in seconds of the time interval to sample performance counters.")
-		("tm", po::value<double>()->default_value(std::numeric_limits<double>::max()), "time-max, maximum execution time in seconds, where execution time is computed adding all the intervals executed.")
+		("ti", po::value<double>()->default_value(1), "time-interval, duration in seconds of the time interval to sample performance counters.")
+		("mi", po::value<uint32_t>()->default_value(std::numeric_limits<uint32_t>::max()), "max-intervals, maximum number of intervals.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
@@ -763,6 +763,13 @@ int main(int argc, char *argv[])
 	{
 		cout << desc << endl;
 		exit(EXIT_SUCCESS);
+	}
+
+	// Some checks...
+	if (vm["ti"].as<double>() * vm["mi"].as<uint32_t>() >= 365ULL * 24ULL * 3600ULL)
+	{
+		cerr << "You want to execute the programs for more than a year... That, or you are using negative numbers for interval time / max number of intervals." << endl;
+		exit(EXIT_FAILURE);
 	}
 
 	// Set CPU affinity for not interfering with the executed workloads
@@ -800,11 +807,12 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	pcm_reset();
 	auto cat = CAT();
 	try
 	{
-		// Configure PCM
-		pcm_setup(vm["event"].as<vector<string>>());
+		// Events to monitor
+		auto events = vm["event"].as<vector<string>>();
 
 		// Configure CAT
 		cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
@@ -814,7 +822,7 @@ int main(int argc, char *argv[])
 			task_execute(task);
 
 		// Start doing things
-		loop(tasklist, coslist, cat, vm["ti"].as<double>(), vm["tm"].as<double>(), out, fin_out);
+		loop(tasklist, coslist, cat, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, cat);
