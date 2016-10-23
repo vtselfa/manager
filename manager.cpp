@@ -74,10 +74,11 @@ struct Task
 
 	bool limit_reached = false; // Has the instruction limit been reached?
 	bool completed = false;     // Do not print stats
+	bool batch = false;         // Batch tasks do not need to be completed in order to finish the execution
 
 	Task() = delete;
-	Task(string cmd, uint32_t cpu, string out, string in, string err, string skel, uint64_t max_instr) :
-		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpu(cpu), out(out), in(in), err(err), skel(skel), max_instr(max_instr) {}
+	Task(string cmd, uint32_t cpu, string out, string in, string err, string skel, uint64_t max_instr, bool batch) :
+		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpu(cpu), out(out), in(in), err(err), skel(skel), max_instr(max_instr), batch(batch) {}
 
 	// Reset stats and limit flag
 	void reset()
@@ -149,7 +150,7 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		if (!tasks[i]["app"])
-			throw std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_megainstr'");
+			throw std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'");
 
 		const auto &app = tasks[i]["app"];
 
@@ -166,18 +167,17 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		string input = app["stdin"] ? app["stdin"].as<string>() : "";
 		string error = app["stderr"] ? app["stderr"].as<string>() : "err";
 
-		// Instructions limit (in millions of instructions)
-		auto max_megainstr = app["max_megainstr"] ? app["max_megainstr"].as<uint64_t>() : -1ULL;
-
 		// CPU affinity
 		if (!tasks[i]["cpu"])
 			throw std::runtime_error("Each task must have a cpu");
 		auto cpu = tasks[i]["cpu"].as<uint32_t>();
 
-		// Max megainstructions override... this is for overcoming the lack of merge operand in the YAML library, don't blame me
-		max_megainstr = tasks[i]["max_megainstr"] ? tasks[i]["max_megainstr"].as<uint64_t>() : max_megainstr;
+		// Maximum number of instructions to execute
+		uint64_t max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : -1ULL;
 
-		result.push_back(Task(cmd, cpu, output, input, error, skel, max_megainstr * 1000 * 1000));
+		bool batch = tasks[i]["batch"] ? tasks[i]["batch"].as<bool>() : false;
+
+		result.push_back(Task(cmd, cpu, output, input, error, skel, max_instr, batch));
 	}
 	return result;
 }
@@ -590,7 +590,9 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, double time_in
 			// This task has never reached any limits
 			if (!task.completed)
 			{
-				all_completed = false;
+				// Batch tasks do not need to be completed
+				if (!task.batch)
+					all_completed = false;
 				stats_print(task.stats_interval, out, task.cpu, task.id, task.executable, interval);
 			}
 		}
