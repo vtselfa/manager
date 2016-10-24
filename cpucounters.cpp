@@ -1062,7 +1062,7 @@ bool PCM::detectNominalFrequency()
 		    return false;
         }
 
-        std::cerr << "Nominal core frequency: " << nominal_frequency << " Hz" << std::endl;
+        // std::cerr << "Nominal core frequency: " << nominal_frequency << " Hz" << std::endl;
     }
 
     return true;
@@ -1089,9 +1089,9 @@ void PCM::initEnergyMonitoring()
         pkgMinimumPower = (int32) (double(extract_bits(package_power_info, 16, 30))*wattsPerPowerUnit);
         pkgMaximumPower = (int32) (double(extract_bits(package_power_info, 32, 46))*wattsPerPowerUnit);
 
-        std::cerr << "Package thermal spec power: "<< pkgThermalSpecPower << " Watt; ";
-        std::cerr << "Package minimum power: "<< pkgMinimumPower << " Watt; ";
-        std::cerr << "Package maximum power: "<< pkgMaximumPower << " Watt; " << std::endl;
+        // std::cerr << "Package thermal spec power: "<< pkgThermalSpecPower << " Watt; ";
+        // std::cerr << "Package minimum power: "<< pkgMinimumPower << " Watt; ";
+        // std::cerr << "Package maximum power: "<< pkgMaximumPower << " Watt; " << std::endl;
 
         int i = 0;
 
@@ -1292,7 +1292,7 @@ PCM::PCM() :
 
     if(!discoverSystemTopology()) return;
 
-    printSystemTopology();
+    // printSystemTopology(); // Verbooooooseeeeeee
 
     if(!initMSR()) return;
 
@@ -2326,7 +2326,7 @@ void PCM::cleanupPMU()
     if(cpu_model == JAKETOWN)
         enableJKTWorkaround(false);
 
-    std::cerr << " Zeroed PMU registers" << std::endl;
+    // std::cerr << " Zeroed PMU registers" << std::endl;
 }
 
 void PCM::resetPMU()
@@ -2359,7 +2359,7 @@ void PCM::resetPMU()
             MSR[i]->write(IA32_CR_FIXED_CTR_CTRL, 0);
     }
 
-    std::cerr << " Zeroed PMU registers" << std::endl;
+    // std::cerr << " Zeroed PMU registers" << std::endl;
 }
 void PCM::freeRMID()
 {
@@ -2392,7 +2392,7 @@ void PCM::freeRMID()
 	}
 
 
-	std::cerr << " Freeing up all RMIDs" << std::endl;
+	// std::cerr << " Freeing up all RMIDs" << std::endl;
 }
 
 void PCM::setOutput(const std::string filename)
@@ -2419,7 +2419,7 @@ void PCM::cleanup()
 
     if (MSR.empty()) return;
 
-    std::cerr << "Cleaning up" << std::endl;
+    // std::cerr << "Cleaning up" << std::endl;
 
     if (decrementInstanceSemaphore())
         cleanupPMU();
@@ -3672,13 +3672,13 @@ ServerPCICFGUncore::ServerPCICFGUncore(uint32 socket_, PCM * pcm) :
          *  is possible with single socket systems.
          */
         qpiLLHandles.clear();
-        std::cerr << num_imc << " memory controllers detected with total number of " << imcHandles.size() << " channels. " << std::endl;
+        // std::cerr << num_imc << " memory controllers detected with total number of " << imcHandles.size() << " channels. " << std::endl;
         return;
     }
 
 #ifdef PCM_NOQPI
     qpiLLHandles.clear();
-    std::cerr << num_imc<<" memory controllers detected with total number of "<< imcHandles.size() <<" channels. " << std::endl;
+    // std::cerr << num_imc<<" memory controllers detected with total number of "<< imcHandles.size() <<" channels. " << std::endl;
     return;
 #else
 

@@ -24,8 +24,6 @@ void pcm_build_event(const char *event_str, EventSelectRegister &reg, CoreEvent 
 		if (token == NULL)
 			break;
 
-		printf("%d: %s\n", j, token);
-
 		if(strncmp(token,"cpu", 3) == 0)
 			continue;
 
