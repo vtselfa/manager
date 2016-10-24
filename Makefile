@@ -12,9 +12,9 @@ klocwork: $(EXE)
 CXXFLAGS += -Wall -g -O0 -Wno-unknown-pragmas
 
 # rely on Linux perf support (user needs CAP_SYS_ADMIN privileges), comment out to disable
-ifneq ($(wildcard /usr/include/linux/perf_event.h),)
-CXXFLAGS += -DPCM_USE_PERF
-endif
+# ifneq ($(wildcard /usr/include/linux/perf_event.h),)
+# CXXFLAGS += -DPCM_USE_PERF
+# endif
 
 UNAME:=$(shell uname)
 
@@ -43,7 +43,7 @@ OBJS = $(COMMON_OBJS) $(EXE_OBJS)
 %.x: %.o $(COMMON_OBJS)
 	$(CXX) -o $@ $^ $(LIB)
 
-%.o: %.cpp
+%.o: %.cpp %.hpp
 	$(CXX) $(CXXFLAGS) -c $*.cpp -o $*.o
 	@# the following lines generate dependency files for the
 	@#  target object
