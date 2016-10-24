@@ -807,7 +807,16 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	pcm_reset();
+	try
+	{
+		pcm_reset();
+	}
+	catch (const std::exception &e)
+	{
+		cerr << e.what() << endl;
+		exit(EXIT_FAILURE);
+	}
+
 	auto cat = CAT();
 	try
 	{

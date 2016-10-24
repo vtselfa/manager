@@ -1012,13 +1012,15 @@ bool PCM::initMSR()
         // failed
         MSR.clear();
 
-        std::cerr << "Can not access CPUs Model Specific Registers (MSRs)." << std::endl;
 #ifdef _MSC_VER
+        std::cerr << "Can not access CPUs Model Specific Registers (MSRs)." << std::endl;
         std::cerr << "You must have signed msr.sys driver in your current directory and have administrator rights to run this program." << std::endl;
 #elif defined(__linux__)
-        std::cerr << "Try to execute 'modprobe msr' as root user and then" << std::endl;
-        std::cerr << "you also must have read and write permissions for /dev/cpu/*/msr devices (/dev/msr* for Android). The 'chown' command can help." << std::endl;
+        throw std::runtime_error("Cannot access the CPUs Model Specific Registers (MSRs).\n"
+				"Try to execute 'modprobe msr' as root and check if you have read and write permissions for /dev/cpu/*/msr devices (/dev/msr* for Android).\n"
+				"The 'chown' command can help.");
 #elif defined(__FreeBSD__)
+        std::cerr << "Can not access CPUs Model Specific Registers (MSRs)." << std::endl;
         std::cerr << "Ensure cpuctl module is loaded and that you have read and write" << std::endl;
         std::cerr << "permissions for /dev/cpuctl* devices (the 'chown' command can help)." << std::endl;
 #endif

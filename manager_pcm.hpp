@@ -62,7 +62,7 @@ struct CoreEvent
 template <typename Resume, typename Wait, typename Pause>
 class PerfCountMon
 {
-	PCM *m;
+	PCM *m = nullptr;
 
 	// Callable template attributes
 	Resume resume;
@@ -77,12 +77,14 @@ class PerfCountMon
 
 	void clean()
 	{
-		m->cleanup();
+		if (m)
+			m->cleanup();
 	}
 
 	void reset()
 	{
-		m->resetPMU();
+		if (m)
+			m->resetPMU();
 	}
 
 	void mon_custom_events(const std::vector<std::string> &str_events)
