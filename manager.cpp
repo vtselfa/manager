@@ -28,6 +28,15 @@
 #include "manager_pcm.hpp"
 
 
+// Some predefined events, used when no events are supplied, but only tested in the Intel Xeon e5 2658A v3, so be carefull
+#define L1_HITS   "cpu/umask=0x01,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L1_HIT/"
+#define L1_MISSES "cpu/umask=0x08,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L1_MISS/"
+#define L2_HITS   "cpu/umask=0x02,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L2_HIT/"
+#define L2_MISSES "cpu/umask=0x10,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L2_MISS/"
+#define L3_HITS   "cpu/umask=0x04,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_HIT/"
+#define L3_MISSES "cpu/umask=0x20,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_MISS/"
+
+
 namespace fs = boost::filesystem;
 namespace po = boost::program_options;
 namespace chr = std::chrono;
@@ -40,7 +49,9 @@ using std::cout;
 using std::cerr;
 using std::endl;
 
+
 string extract_executable_name(string cmd);
+
 
 struct Cos
 {
@@ -735,7 +746,7 @@ int main(int argc, char *argv[])
 		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
 		("ti", po::value<double>()->default_value(1), "time-interval, duration in seconds of the time interval to sample performance counters.")
 		("mi", po::value<uint32_t>()->default_value(std::numeric_limits<uint32_t>::max()), "max-intervals, maximum number of intervals.")
-		("event,e", po::value<vector<string>>()->composing()->multitoken()->required(), "optional list of custom events to monitor (up to 4)")
+		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
@@ -821,7 +832,9 @@ int main(int argc, char *argv[])
 	try
 	{
 		// Events to monitor
-		auto events = vm["event"].as<vector<string>>();
+		auto events = vector<string>{L2_HITS, L2_MISSES, L3_HITS, L3_MISSES};
+		if (vm.count("event"))
+			events = vm["event"].as<vector<string>>();
 
 		// Configure CAT
 		cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
