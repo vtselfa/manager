@@ -92,17 +92,37 @@ class PerfCountMon
 
 	PerfCountMon(Resume r, Wait w, Pause p) : m(PCM::getInstance()), resume(r), wait(w), pause(p) {}
 
+
 	void clean()
 	{
-		if (m)
-			m->cleanup();
+		m->cleanup();
 	}
+
 
 	void reset()
 	{
-		if (m)
-			m->resetPMU();
+		m->resetPMU();
 	}
+
+
+	void check_status(PCM::ErrorCode status)
+	{
+		switch (status)
+		{
+			case PCM::Success:
+				break;
+
+			case PCM::MSRAccessDenied:
+				throw std::runtime_error("Access to PMU denied: No MSR or PCI CFG space access");
+
+			case PCM::PMUBusy:
+				throw std::runtime_error("Access to PMU denied: The Performance Monitoring Unit is occupied by another application");
+
+			default:
+				throw std::runtime_error("Access to PMU denied: unknown error)");
+		}
+	}
+
 
 	void mon_custom_events(const std::vector<std::string> &str_events)
 	{
@@ -128,21 +148,7 @@ class PerfCountMon
 		// Program PCM unit
 		PCM::ErrorCode status = m->program(PCM::EXT_CUSTOM_CORE_EVENTS, &conf);
 
-		// Check status
-		switch (status)
-		{
-			case PCM::Success:
-				break;
-
-			case PCM::MSRAccessDenied:
-				throw std::runtime_error("Access to PMU denied: No MSR or PCI CFG space access");
-
-			case PCM::PMUBusy:
-				throw std::runtime_error("Access to PMU denied: The Performance Monitoring Unit is occupied by another application");
-
-			default:
-				throw std::runtime_error("Access to PMU denied: unknown error)");
-		}
+		check_status(status);
 	}
 
 
