@@ -584,6 +584,20 @@ void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, c
 }
 
 
+// Detect transcient errors in PCM results
+// They happen sometimes... Good work, Intel.
+bool stats_are_wrong(const Stats &curr, const Stats &prev)
+{
+	const double tolerance = 1.75;
+	const double major = std::max(curr.cycles, prev.cycles);
+	const double minor = std::min(curr.cycles, prev.cycles);
+	const double ratio = major / minor;
+
+	if (ratio >= tolerance)
+		return true;
+	return false;
+}
+
 
 void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
 {
@@ -626,6 +640,19 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<s
 		for (size_t i = 0; i < tasklist.size(); i++)
 		{
 			auto &task = tasklist[i];
+
+			// Deal with PCM transcient errors
+			if (stats_are_wrong(stats[i], task.stats_interval) && interval > 0)
+			{
+				cerr << "The results for this interval seem like a PCM transcient error:" << endl;
+				cerr << "Prev: ";
+				stats_print(task.stats_interval, cerr, task.cpu, task.id, task.executable,  interval - 1, " ");
+				cerr << "Curr: ";
+				stats_print(stats[i], cerr, task.cpu, task.id, task.executable, interval, " ");
+				cerr << "They will be replaced with the values from the previous interval" << endl;
+
+				stats[i] = task.stats_interval;
+			}
 
 			// Count stats
 			task.stats_interval    = stats[i];
