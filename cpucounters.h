@@ -614,6 +614,7 @@ public:
 
     */
     void getAllCounterStates(SystemCounterState & systemState, std::vector<SocketCounterState> & socketStates, std::vector<CoreCounterState> & coreStates);
+    void getCounterStates(const std::vector<uint32_t> &cores, SystemCounterState &systemState, std::vector<SocketCounterState> &socketStates, std::vector<CoreCounterState> &coreStates);
 
     /*! \brief Return true if the core in online
 

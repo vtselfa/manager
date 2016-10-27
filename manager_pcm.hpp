@@ -171,13 +171,13 @@ class PerfCountMon
 
 		// Collect stats
 		auto start = chr::system_clock::now();
-		m->getAllCounterStates(sb, skb, cb);
+		m->getCounterStates(cores, sb, skb, cb);
 
 		// Wait some time
 		wait();
 
 		// Collect stats
-		m->getAllCounterStates(sa, ska, ca);
+		m->getCounterStates(cores, sa, ska, ca);
 		uint64_t duration = chr::duration_cast<chr::microseconds>
 			(chr::system_clock::now() - start).count();
 

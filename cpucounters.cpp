@@ -3307,6 +3307,36 @@ void PCM::getAllCounterStates(SystemCounterState & systemState, std::vector<Sock
     }
 }
 
+void PCM::getCounterStates(const std::vector<uint32_t> &cores, SystemCounterState &systemState, std::vector<SocketCounterState> &socketStates, std::vector<CoreCounterState> &coreStates)
+{
+    for (const auto core : cores)
+    {
+        // read core counters
+        if(isCoreOnline(core))
+        {
+          coreStates[core].readAndAggregate(MSR[core]);
+          socketStates[topology[core].socket].UncoreCounterState::readAndAggregate(MSR[core]); // read package C state counters
+        }
+    }
+
+    for (uint32 s = 0; s < (uint32)num_sockets; ++s)
+    {
+        readAndAggregateUncoreMCCounters(s, socketStates[s]);
+        readAndAggregateEnergyCounters(s, socketStates[s]);
+        readPackageThermalHeadroom(s, socketStates[s]);
+    }
+
+    // Do not read QPICounters
+    // Do not aggregate core counters into sockets
+    // More info in getAllCounterStates
+
+    for (int32 s = 0; s < num_sockets; ++s)
+    {   // aggregate core counters from sockets into system state and
+        // aggregate socket uncore iMC, energy and package C state counters into system
+        systemState.accumulateSocketState(socketStates[s]);
+    }
+}
+
 CoreCounterState PCM::getCoreCounterState(uint32 core)
 {
     CoreCounterState result;
