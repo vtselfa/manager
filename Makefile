@@ -43,7 +43,7 @@ OBJS = $(COMMON_OBJS) $(EXE_OBJS)
 %.x: %.o $(COMMON_OBJS)
 	$(CXX) -o $@ $^ $(LIB)
 
-%.o: %.cpp %.hpp
+%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $*.cpp -o $*.o
 	@# the following lines generate dependency files for the
 	@#  target object
@@ -62,6 +62,8 @@ OBJS = $(COMMON_OBJS) $(EXE_OBJS)
 
 nice:
 	uncrustify --replace -c ~/uncrustify.cfg *.cpp *.h WinMSRDriver/Win7/*.h WinMSRDriver/Win7/*.c WinMSRDriver/WinXP/*.h WinMSRDriver/WinXP/*.c  PCM_Win/*.h PCM_Win/*.cpp  
+
+manager_pcm.o: manager_pcm.hpp manager_pcm.cpp
 
 manager: common.o cat-intel.o manager.o manager_pcm.o $(COMMON_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIB) -L/home/viselol/src/intel-cmt-cat/lib -lboost_system -lboost_filesystem -lyaml-cpp -lpqos
