@@ -524,16 +524,63 @@ void tasks_kill_and_restart(vector<Task> &tasklist)
 }
 
 
-void stats_print(const Stats &stats, std::ostream &out, uint32_t cpu, uint32_t id, const string &app, uint64_t interval = -1ULL)
+void stats_final_print_header(std::ostream &out, string sep=",")
+{
+	out << "core"         << sep;
+	out << "app"          << sep;
+	out << "us"           << sep;
+	out << "cycles"       << sep;
+	out << "instructions" << sep;
+	out << "ipc"          << sep;
+	out << "rel_freq"     << sep;
+	out << "act_rel_freq" << sep;
+	out << "mc_gbytes_rd" << sep;
+	out << "mc_gbytes_wt" << sep;
+	out << "proc_energy"  << sep;
+	out << "dram_energy"  << sep;
+
+	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	{
+		out << "ev" << i;
+		if (i < MAX_EVENTS - 1)
+			out << sep;
+	}
+	out << endl;
+}
+
+
+void stats_print_header(std::ostream &out, string sep=",")
+{
+	out << "interval" << sep;
+	stats_final_print_header(out);
+}
+
+
+void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const string &app, uint64_t interval = -1ULL, const string &sep=",")
 {
 	boost::io::ios_all_saver guard(out); // Saves current flags and format
 
 	if (interval != -1ULL)
-		out << interval << ", ";
-
-	out << cpu << ", ";
-	out << std::setfill('0') << std::setw(2) << id << "_" << app << ", ";
-	stats.print(out);
+		out << interval     << sep;
+	out << cpu              << sep << std::setfill('0') << std::setw(2);
+	out << id << "_" << app << sep;
+	out << s.us             << sep;
+	out << s.cycles         << sep;
+	out << s.instructions   << sep;
+	out << s.ipc            << sep;
+	out << s.rel_freq       << sep;
+	out << s.act_rel_freq   << sep;
+	out << s.mc_gbytes_rd   << sep;
+	out << s.mc_gbytes_wt   << sep;
+	out << s.proc_energy    << sep;
+	out << s.dram_energy    << sep;
+	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	{
+		out << s.event[i];
+		if (i < MAX_EVENTS - 1)
+			out << sep;
+	}
+	out << endl;
 }
 
 
@@ -561,8 +608,8 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<s
 	perf.mon_custom_events(events);
 
 	// Print headers
-	out     << "interval,cpu,app_id,ipc,instr,cycles,us,ev0,ev1,ev2,ev3" << endl;
-	fin_out <<          "cpu,app_id,ipc,instr,cycles,us,ev0,ev1,ev2,ev3" << endl;
+	stats_print_header(out);
+	stats_final_print_header(fin_out);
 
 	// Loop
 	for (uint32_t interval = 0; interval < max_int; interval++)

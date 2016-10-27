@@ -23,9 +23,19 @@ void pcm_reset();
 // Structures
 struct Stats
 {
-	uint64_t us;
+	// Core stats
+	uint64_t us; // Microseconds
 	uint64_t cycles;
 	uint64_t instructions;
+	double ipc;
+	double rel_freq; // Frequency relative to the nominal CPU frequency
+	double act_rel_freq;
+	// System stats i.e. equal for all the cores
+	double mc_gbytes_rd; // In GB
+	double mc_gbytes_wt; // In GB
+	double proc_energy;  // In joules
+	double dram_energy;  // In joules
+	// Core events
 	uint64_t event[MAX_EVENTS];
 
 	Stats() = default;
@@ -35,6 +45,13 @@ struct Stats
 		us           += o.us;
 		cycles       += o.cycles;
 		instructions += o.instructions;
+		ipc          = (double) cycles / (double) instructions; // We could also do a weighted mean
+		rel_freq     = ((rel_freq * cycles) + (o.rel_freq * o.cycles)) / (cycles + o.cycles); // Weighted mean
+		act_rel_freq = ((act_rel_freq * cycles) + (o.act_rel_freq * o.cycles)) / (cycles + o.cycles); // Weighted mean
+		mc_gbytes_rd += o.mc_gbytes_rd;
+		mc_gbytes_wt += o.mc_gbytes_wt;
+		proc_energy  += o.proc_energy;
+		dram_energy  += o.dram_energy;
 		for (int i = 0; i < MAX_EVENTS; i++)
 			event[i] += o.event[i];
 		return *this;
@@ -133,9 +150,13 @@ class PerfCountMon
 	uint64_t measure(const std::vector<uint32_t> &cores, std::vector<Stats> &results)
 	{
 		namespace chr = std::chrono;
-		SystemCounterState              SysBeforeState, SysAfterState;
-		std::vector<CoreCounterState>   BeforeState, AfterState;
-		std::vector<SocketCounterState> DummySocketStates;
+
+		auto sb = SystemCounterState();
+		auto sa = SystemCounterState();
+		auto cb = std::vector<CoreCounterState>(m->getNumCores());
+		auto ca = std::vector<CoreCounterState>(m->getNumCores());
+		auto skb = std::vector<SocketCounterState>(m->getNumSockets());
+		auto ska = std::vector<SocketCounterState>(m->getNumSockets());
 
 		results.clear();
 
@@ -144,13 +165,13 @@ class PerfCountMon
 
 		// Collect stats
 		auto start = chr::system_clock::now();
-		m->getAllCounterStates(SysBeforeState, DummySocketStates, BeforeState);
+		m->getAllCounterStates(sb, skb, cb);
 
 		// Wait some time
 		wait();
 
 		// Collect stats
-		m->getAllCounterStates(SysAfterState, DummySocketStates, AfterState);
+		m->getAllCounterStates(sa, ska, ca);
 		uint64_t duration = chr::duration_cast<chr::microseconds>
 			(chr::system_clock::now() - start).count();
 
@@ -165,12 +186,19 @@ class PerfCountMon
 
 			Stats stats =
 			{
-				.us = duration,
-				.cycles = getCycles(BeforeState[core], AfterState[core]),
-				.instructions = getInstructionsRetired(BeforeState[core], AfterState[core]),
+				.us           = duration,
+				.cycles       = getCycles(cb[core], ca[core]),
+				.instructions = getInstructionsRetired(cb[core], ca[core]),
+				.ipc          = getIPC(cb[core], ca[core]),
+				.rel_freq     = getRelativeFrequency(cb[core], ca[core]),
+				.act_rel_freq = getActiveRelativeFrequency(cb[core], ca[core]),
+				.mc_gbytes_rd = getBytesReadFromMC(sb, sa) / double(1e9),
+				.mc_gbytes_wt = getBytesWrittenToMC(sb, sa) / double(1e9),
+				.proc_energy  = getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
+				.dram_energy  = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
 			};
 			for (int i = 0; i < MAX_EVENTS; ++i)
-				stats.event[i] = getNumberOfCustomEvents(i, BeforeState[core], AfterState[core]);
+				stats.event[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
 
 			results.push_back(stats);
 		}
