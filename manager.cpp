@@ -592,15 +592,32 @@ void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, c
 
 // Detect transcient errors in PCM results
 // They happen sometimes... Good work, Intel.
-bool stats_are_wrong(const Stats &curr, const Stats &prev)
+bool stats_are_wrong(const Stats &s)
 {
-	const double tolerance = 1.75;
-	const double major = std::max(curr.cycles, prev.cycles);
-	const double minor = std::min(curr.cycles, prev.cycles);
-	const double ratio = major / minor;
+	const double approx_mhz = (double) s.cycles / (double) s.us;
+	const double approx_inv_mhz = (double) s.cycles / (double) s.us;
 
-	if (ratio >= tolerance)
+	if (approx_mhz > 10000 || approx_inv_mhz > 10000)
 		return true;
+
+	if (s.ipnc > 100 || s.ipnc < 0)
+		return true;
+
+	if (s.ipc > 100 || s.ipc < 0)
+		return true;
+
+	if (s.rel_freq < 0 || s.act_rel_freq < 0)
+		return true;
+
+	if (s.l3_kbytes_occ > 1000000) // More that one GB...
+		return true;
+
+	if (s.mc_gbytes_rd < 0 || s.mc_gbytes_wt < 0)
+		return true;
+
+	if (s.proc_energy < 0 || s.dram_energy < 0)
+		return true;
+
 	return false;
 }
 
@@ -648,15 +665,13 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<s
 			auto &task = tasklist[i];
 
 			// Deal with PCM transcient errors
-			if (stats_are_wrong(stats[i], task.stats_interval) && interval > 0)
+			if (stats_are_wrong(stats[i]) && task.stats_acumulated.instructions > 0)
 			{
-				cerr << "The results for this interval seem like a PCM transcient error:" << endl;
-				cerr << "Prev: ";
-				stats_print(task.stats_interval, cerr, task.cpu, task.id, task.executable,  interval - 1, " ");
-				cerr << "Curr: ";
+				cerr << "The results for the interval " << interval << " seem wrong:" << endl;
+				stats_print_header(cerr);
 				stats_print(stats[i], cerr, task.cpu, task.id, task.executable, interval, " ");
-				cerr << "They will be replaced with the values from the previous interval" << endl;
-
+				cerr << "They will be replaced with the values from the previous interval:" << endl;
+				stats_print(task.stats_interval, cerr, task.cpu, task.id, task.executable,  interval - 1, " ");
 				stats[i] = task.stats_interval;
 			}
 
