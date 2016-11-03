@@ -25,11 +25,14 @@ struct Stats
 {
 	// Core stats
 	uint64_t us; // Microseconds
-	uint64_t cycles;
 	uint64_t instructions;
+	uint64_t cycles;
+	uint64_t invariant_cycles;
 	double ipc;
+	double ipnc;     // Intructions per nominal cycles
 	double rel_freq; // Frequency relative to the nominal CPU frequency
 	double act_rel_freq;
+	uint64_t l3_kbytes_occ;
 	// System stats i.e. equal for all the cores
 	double mc_gbytes_rd; // In GB
 	double mc_gbytes_wt; // In GB
@@ -42,16 +45,24 @@ struct Stats
 
 	Stats& operator+=(const Stats &o)
 	{
-		us           += o.us;
-		cycles       += o.cycles;
-		instructions += o.instructions;
-		ipc          = (double) cycles / (double) instructions; // We could also do a weighted mean
-		rel_freq     = ((rel_freq * cycles) + (o.rel_freq * o.cycles)) / (cycles + o.cycles); // Weighted mean
-		act_rel_freq = ((act_rel_freq * cycles) + (o.act_rel_freq * o.cycles)) / (cycles + o.cycles); // Weighted mean
-		mc_gbytes_rd += o.mc_gbytes_rd;
-		mc_gbytes_wt += o.mc_gbytes_wt;
-		proc_energy  += o.proc_energy;
-		dram_energy  += o.dram_energy;
+		// Compute this metrics before modifying other things
+		rel_freq     = ((rel_freq * invariant_cycles) + (o.rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
+		act_rel_freq = ((act_rel_freq * invariant_cycles) + (o.act_rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
+
+		// Weighted mean, which assumes that all the interval had the same occupancy,
+		// which may be not true, because we only know the final result, but...
+		l3_kbytes_occ = ((l3_kbytes_occ * invariant_cycles) + (o.l3_kbytes_occ * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles);
+
+		us               += o.us;
+		instructions     += o.instructions;
+		cycles           += o.cycles;
+		invariant_cycles += o.invariant_cycles;
+		ipc              = (double) instructions / (double) cycles;     // We could also do a weighted mean
+		ipnc             = (double) instructions / (double) invariant_cycles; // We could also do a weighted mean
+		mc_gbytes_rd     += o.mc_gbytes_rd;
+		mc_gbytes_wt     += o.mc_gbytes_wt;
+		proc_energy      += o.proc_energy;
+		dram_energy      += o.dram_energy;
 		for (int i = 0; i < MAX_EVENTS; i++)
 			event[i] += o.event[i];
 		return *this;
@@ -192,16 +203,19 @@ class PerfCountMon
 
 			Stats stats =
 			{
-				.us           = duration,
-				.cycles       = getCycles(cb[core], ca[core]),
-				.instructions = getInstructionsRetired(cb[core], ca[core]),
-				.ipc          = getIPC(cb[core], ca[core]),
-				.rel_freq     = getRelativeFrequency(cb[core], ca[core]),
-				.act_rel_freq = getActiveRelativeFrequency(cb[core], ca[core]),
-				.mc_gbytes_rd = getBytesReadFromMC(sb, sa) / double(1e9),
-				.mc_gbytes_wt = getBytesWrittenToMC(sb, sa) / double(1e9),
-				.proc_energy  = getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
-				.dram_energy  = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
+				.us               = duration,
+				.instructions     = getInstructionsRetired(cb[core], ca[core]),
+				.cycles           = getCycles(cb[core], ca[core]),
+				.invariant_cycles = getInvariantTSC(cb[core], ca[core]),
+				.ipc              = getIPC(cb[core], ca[core]),
+				.ipnc             = getExecUsage(cb[core], ca[core]),
+				.rel_freq         = getRelativeFrequency(cb[core], ca[core]),
+				.act_rel_freq     = getActiveRelativeFrequency(cb[core], ca[core]),
+				.l3_kbytes_occ    = getL3CacheOccupancy(ca[core]),
+				.mc_gbytes_rd     = getBytesReadFromMC(sb, sa) / double(1e9),
+				.mc_gbytes_wt     = getBytesWrittenToMC(sb, sa) / double(1e9),
+				.proc_energy      = getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
+				.dram_energy      = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
 			};
 			for (int i = 0; i < MAX_EVENTS; ++i)
 				stats.event[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);

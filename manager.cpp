@@ -526,18 +526,21 @@ void tasks_kill_and_restart(vector<Task> &tasklist)
 
 void stats_final_print_header(std::ostream &out, string sep=",")
 {
-	out << "core"         << sep;
-	out << "app"          << sep;
-	out << "us"           << sep;
-	out << "cycles"       << sep;
-	out << "instructions" << sep;
-	out << "ipc"          << sep;
-	out << "rel_freq"     << sep;
-	out << "act_rel_freq" << sep;
-	out << "mc_gbytes_rd" << sep;
-	out << "mc_gbytes_wt" << sep;
-	out << "proc_energy"  << sep;
-	out << "dram_energy"  << sep;
+	out << "core"             << sep;
+	out << "app"              << sep;
+	out << "us"               << sep;
+	out << "instructions"     << sep;
+	out << "cycles"           << sep;
+	out << "invariant_cycles" << sep;
+	out << "ipc"              << sep;
+	out << "ipnc"             << sep;
+	out << "rel_freq"         << sep;
+	out << "act_rel_freq"     << sep;
+	out << "l3_kbytes_occ"    << sep;
+	out << "mc_gbytes_rd"     << sep;
+	out << "mc_gbytes_wt"     << sep;
+	out << "proc_energy"      << sep;
+	out << "dram_energy"      << sep;
 
 	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
 	{
@@ -561,19 +564,22 @@ void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, c
 	boost::io::ios_all_saver guard(out); // Saves current flags and format
 
 	if (interval != -1ULL)
-		out << interval     << sep;
-	out << cpu              << sep << std::setfill('0') << std::setw(2);
-	out << id << "_" << app << sep;
-	out << s.us             << sep;
-	out << s.cycles         << sep;
-	out << s.instructions   << sep;
-	out << s.ipc            << sep;
-	out << s.rel_freq       << sep;
-	out << s.act_rel_freq   << sep;
-	out << s.mc_gbytes_rd   << sep;
-	out << s.mc_gbytes_wt   << sep;
-	out << s.proc_energy    << sep;
-	out << s.dram_energy    << sep;
+		out << interval       << sep;
+	out << cpu                << sep << std::setfill('0') << std::setw(2);
+	out << id << "_" << app   << sep;
+	out << s.us               << sep;
+	out << s.instructions     << sep;
+	out << s.cycles           << sep;
+	out << s.invariant_cycles << sep;
+	out << s.ipc              << sep;
+	out << s.ipnc             << sep;
+	out << s.rel_freq         << sep;
+	out << s.act_rel_freq     << sep;
+	out << s.l3_kbytes_occ    << sep;
+	out << s.mc_gbytes_rd     << sep;
+	out << s.mc_gbytes_wt     << sep;
+	out << s.proc_energy      << sep;
+	out << s.dram_energy      << sep;
 	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
 	{
 		out << s.event[i];
