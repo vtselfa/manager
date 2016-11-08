@@ -836,7 +836,7 @@ int main(int argc, char *argv[])
 		("help,h", "print usage message")
 		("config,c", po::value<string>()->required(), "pathname for yaml config file")
 		("output,o", po::value<string>(), "pathname for output")
-		("fin-output", po::value<string>()->default_value("/dev/null"), "pathname for output values when tasks are completed")
+		("fin-output", po::value<string>(), "pathname for output values when tasks are completed")
 		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
 		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
 		("ti", po::value<double>()->default_value(1), "time-interval, duration in seconds of the time interval to sample performance counters.")
@@ -883,13 +883,17 @@ int main(int argc, char *argv[])
 		set_cpu_affinity(vm["cpu-affinity"].as<vector<uint32_t>>());
 
 	// Open output file if needed; if not, use cout
-	auto file = std::ofstream();
+	auto file1 = std::ofstream();
 	if (vm.count("output"))
-		file = open_ofstream(vm["output"].as<string>());
-	std::ostream &out = file.is_open() ? file : cout;
+		file1 = open_ofstream(vm["output"].as<string>());
+	std::ostream &out = file1.is_open() ? file1 : cout;
 
 	// Output file for final output
-	auto fin_out = open_ofstream(vm["fin-output"].as<string>());
+	auto file2 = std::ofstream();
+	auto ss_aux = std::stringstream();
+	if (vm.count("fin-output"))
+		file2 = open_ofstream(vm["fin-output"].as<string>());
+	std::ostream &fin_out = file2.is_open() ? file2 : dynamic_cast<std::ostream &>(ss_aux);
 
 	// Read config
 	auto tasklist = vector<Task>();
@@ -940,6 +944,11 @@ int main(int argc, char *argv[])
 
 		// Start doing things
 		loop(tasklist, coslist, cat, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
+
+		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
+		// If we don't do this and the normal output also goes to stdout, they would mix.
+		if (!vm.count("fin-output"))
+			cout << dynamic_cast<std::stringstream &>(fin_out).str();
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, cat);
