@@ -4,6 +4,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <thread>
 
@@ -35,6 +36,8 @@
 #define L2_MISSES "cpu/umask=0x10,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L2_MISS/"
 #define L3_HITS   "cpu/umask=0x04,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_HIT/"
 #define L3_MISSES "cpu/umask=0x20,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_MISS/"
+#define STALLS_L2_PENDING  "cpu/umask=0x05,event=0xA3,name=CYCLE_ACTIVITY.STALLS_L2_PENDING,cmask=5/"
+#define STALLS_LDM_PENDING "cpu/umask=0x06,event=0xA3,name=CYCLE_ACTIVITY.STALLS_LDM_PENDING,cmask=6/"
 
 
 namespace fs = boost::filesystem;
@@ -68,7 +71,7 @@ struct Task
 	static std::atomic<uint32_t> ID;
 
 	// Set on construction
-	uint32_t id;
+	const uint32_t id;
 	const string cmd;
 	const string executable;  // Basename of the executable
 	uint32_t cpu;             // Allowed cpus
@@ -103,6 +106,103 @@ struct Task
 std::atomic<uint32_t> Task::ID(0);
 
 
+class CAT_Policy
+{
+	protected:
+
+	CAT cat;
+
+	public:
+
+	CAT_Policy() = default;
+
+	void set_cat(CAT cat)      { this->cat = cat; }
+	CAT& get_cat()             { return cat; }
+	const CAT& get_cat() const { return cat; }
+
+	virtual ~CAT_Policy() = default;
+
+	// Derived classes should perform their operations here.
+	// The base class does nothing by default.
+	virtual void adjust(uint64_t current_interval, const vector<Task> &tasklist) {}
+};
+
+
+class CAT_Policy_Slowfirst: public CAT_Policy
+{
+	// This policy will be applied every this number of intervals
+	uint64_t every = -1;
+
+	// Masks should be in reversal order of importance i.e. first mask is gonna be used by COS0,
+	// wich will contain most of the processes. The greater the COS number the more advantageous
+	// is presumed to be. At least that is what the algorithm expects.
+	vector<uint64_t> masks;
+
+	public:
+
+	CAT_Policy_Slowfirst(uint64_t every, vector<uint64_t> masks) : CAT_Policy(), every(every), masks(masks) {}
+
+	~CAT_Policy_Slowfirst() = default;
+
+	void set_masks(vector<uint64_t> &masks)
+	{
+		masks = masks;
+		for (uint32_t i = 0; i < masks.size(); i++)
+			cat.set_cos_mask(i, masks[i]);
+	}
+
+	// It's important to NOT make distinctions between completed and not completed tasks...
+	// We asume that the events we care about have been programed as ev2 and ev3.
+	virtual void adjust(uint64_t current_interval, const vector<Task> &tasklist)
+	{
+		// Adjust only when the amount of intervals specified has passed
+		if (current_interval % every != 0)
+			return;
+
+		// (Core, Combined stalls) tuple
+		typedef std::tuple<uint32_t, uint64_t> pair;
+		auto v = vector<pair>();
+
+		cat.reset();
+		set_masks(masks);
+
+		uint64_t last_mask = 0;
+		for (auto mask : masks)
+		{
+			if (last_mask > mask)
+			{
+				cerr << "The masks for the slowfirst CAT policy may be in the wrong order" << endl;
+				break;
+			}
+			last_mask = mask;
+		}
+
+		for (uint32_t t = 0; t < tasklist.size(); t++)
+		{
+			const Task &task = tasklist[t];
+			uint64_t l2_miss_stalls = task.stats_acumulated.event[2];
+			uint64_t l3_miss_stalls = task.stats_acumulated.event[3];
+			v.push_back(pair(task.cpu, l2_miss_stalls + l3_miss_stalls));
+		}
+
+		// Sort in descending order by total stalls
+		std::sort(begin(v), end(v),
+				[](const pair &t1, const pair &t2)
+				{
+					return std::get<1>(t1) > std::get<1>(t2);
+				});
+
+		// Assign the slowest cores to masks which will hopefully help them
+		for (uint32_t pos = 0; pos < masks.size() - 1; pos++)
+		{
+			uint32_t cos  = masks.size() - pos - 1;
+			uint32_t core = std::get<0>(v[pos]);
+			cat.set_cos_cpu(cos, core); // Assign core to COS
+		}
+	}
+};
+
+
 // Returns the executable basename from a commandline
 string extract_executable_name(string cmd)
 {
@@ -116,6 +216,37 @@ string extract_executable_name(string cmd)
 	g_strfreev(argv); // Free the memory allocated for argv
 
 	return result;
+}
+
+
+std::shared_ptr<CAT_Policy> config_read_cat_policy(const YAML::Node &config)
+{
+	YAML::Node policy = config["cat_policy"];
+
+	if (!policy["kind"])
+		throw std::runtime_error("The CAT policy needs a 'kind' field");
+	string kind = policy["kind"].as<string>();
+
+	if (kind == "slowfirst")
+	{
+		// Check that required fields exist
+		for (string field : {"every", "cos"})
+			if (!policy[field])
+				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+
+		// Read fields
+		uint64_t every = policy["every"].as<uint64_t>();
+		auto masks = vector<uint64_t>();
+		for (const auto &node : policy["cos"])
+			masks.push_back(node.as<uint64_t>());
+		if (masks.size() <= 2)
+			throw std::runtime_error("The '" + kind + "' CAT policy needs at least two COS");
+
+		return std::make_shared<CAT_Policy_Slowfirst>(every, masks);
+	}
+
+	else
+		throw std::runtime_error("Unknown CAT policy: '" + kind + "'");
 }
 
 
@@ -622,7 +753,7 @@ bool stats_are_wrong(const Stats &s)
 }
 
 
-void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
+void loop(vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
 {
 	if (time_int_us <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -715,6 +846,9 @@ void loop(vector<Task> &tasklist, vector<Cos> &coslist, CAT &cat, const vector<s
 		else
 			tasks_kill_and_restart(tasklist);
 
+		// Adjust CAT according to the selected policy
+		catpol->adjust(interval, tasklist);
+
 		// Adjust time with a PI controller
 		int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
 		int64_t integral     = (int64_t) time_int_us * (interval + 1) - (int64_t) total_elapsed_us;
@@ -788,13 +922,22 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 }
 
 
-void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslist)
+void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<CAT_Policy> &catpol)
 {
+	// The message outputed by YAML is not clear enough, so we test first
+	std::ifstream f(path);
+	if (!f.good())
+		throw std::runtime_error("File doesn't exist or is not readable");
+
 	YAML::Node config = YAML::LoadFile(path);
 
-	// Setup COS
+	// Read initial CAT config
 	if (config["cos"])
 		coslist = config_read_cos(config);
+
+	// Read CAT policy
+	if (config["cat_policy"])
+		catpol = config_read_cat_policy(config);
 
 	// Read tasks into objects
 	if (config["tasks"])
@@ -843,7 +986,7 @@ int main(int argc, char *argv[])
 		("mi", po::value<uint32_t>()->default_value(std::numeric_limits<uint32_t>::max()), "max-intervals, maximum number of intervals.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
-		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after")
+		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after the program execution. Note that even if this is false a CAT policy may reset the CAT config during it's normal operation.")
 		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
 		;
 
@@ -898,12 +1041,13 @@ int main(int argc, char *argv[])
 	// Read config
 	auto tasklist = vector<Task>();
 	auto coslist = vector<Cos>();
+	auto catpol = std::make_shared<CAT_Policy>(); // We want to use polimorfism, so we need a pointer
 	string config_file;
 	try
 	{
 		// Read config and set tasklist and coslist
 		config_file = vm["config"].as<string>();
-		config_read(config_file, tasklist, coslist);
+		config_read(config_file, tasklist, coslist, catpol);
 		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
 	catch(const YAML::ParserException &e)
@@ -913,12 +1057,16 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		cerr << "Error in config file '" + config_file + "': " << e.what() << endl;
+		cerr << "Error reading config file '" + config_file + "': " << e.what() << endl;
 		exit(EXIT_FAILURE);
 	}
 
 	try
 	{
+		// Initial CAT configuration. It may be modified by the CAT policy.
+		CAT cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
+		catpol->set_cat(cat);
+
 		pcm_reset();
 	}
 	catch (const std::exception &e)
@@ -927,7 +1075,6 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	auto cat = CAT();
 	try
 	{
 		// Events to monitor
@@ -935,15 +1082,12 @@ int main(int argc, char *argv[])
 		if (vm.count("event"))
 			events = vm["event"].as<vector<string>>();
 
-		// Configure CAT
-		cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
-
 		// Execute and immediately pause tasks
 		for (auto &task : tasklist)
 			task_execute(task);
 
 		// Start doing things
-		loop(tasklist, coslist, cat, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
+		loop(tasklist, coslist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.
@@ -951,11 +1095,11 @@ int main(int argc, char *argv[])
 			cout << dynamic_cast<std::stringstream &>(fin_out).str();
 
 		// Kill tasks, reset CAT, performance monitors, etc...
-		clean(tasklist, cat);
+		clean(tasklist, catpol->get_cat());
 	}
 	catch(const std::exception &e)
 	{
 		cerr << "Error: " << e.what() << endl;
-		clean_and_die(tasklist, cat);
+		clean_and_die(tasklist, catpol->get_cat());
 	}
 }
