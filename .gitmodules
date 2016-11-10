@@ -1,0 +1,6 @@
+[submodule "intel-cmt-cat"]
+	path = intel-cmt-cat
+	url = git@github.com:vtselfa/intel-cmt-cat.git
+[submodule "intel-pcm"]
+	path = intel-pcm
+	url = git@github.com:vtselfa/intel-pcm.git

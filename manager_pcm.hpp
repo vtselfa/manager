@@ -4,7 +4,7 @@
 #include <iostream>
 #include <vector>
 
-#include "cpucounters.h"
+#include "intel-pcm/cpucounters.h"
 
 
 // Global variables

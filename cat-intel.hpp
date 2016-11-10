@@ -1,4 +1,4 @@
-#include "pqos.h"
+#include "intel-cmt-cat/lib/pqos.h"
 
 class CAT
 {
