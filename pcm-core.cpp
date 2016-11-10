@@ -41,7 +41,7 @@
 #define PCM_CALIBRATION_INTERVAL 50 // calibrate clock only every 50th iteration
 #define MAX_CORES 4096
 #define MAX_EVENTS 4
-Ä[MaÄ[MaÄ[MaÃ
+
 using namespace std;
 namespace po = boost::program_options;
 
@@ -165,15 +165,10 @@ void build_event(const char * argv, EventSelectRegister *reg, int idx)
 	events[idx].value = reg->value;
 }
 
+
 int main(int argc, char * argv[])
 {
 	set_signal_handlers();
-
-#ifdef PCM_FORCE_SILENT
-	null_stream nullStream1, nullStream2;
-	std::cout.rdbuf(&nullStream1);
-	std::cerr.rdbuf(&nullStream2);
-#endif
 
 	cerr << endl;
 	cerr << " Intel(r) Performance Counter Monitor: Core Monitoring Utility "<< endl;
@@ -181,16 +176,16 @@ int main(int argc, char * argv[])
 	cerr << INTEL_PCM_COPYRIGHT << endl;
 	cerr << endl;
 
-	double delay = -1.0;
-	uint32 cur_event = 0;
-	bool csv = false;
-	long diff_usec = 0; // deviation of clock is useconds between measurements
-	uint64 txn_rate = 1;
-	int calibrated = PCM_CALIBRATION_INTERVAL - 2; // keeps track is the clock calibration needed
-	string program = string(argv[0]);
+	double                                  delay = -1.0;
+	uint32                                  cur_event = 0;
+	bool                                    csv = false;
+	long                                    diff_usec = 0; // deviation of clock is useconds between measurements
+	uint64                                  txn_rate = 1;
+	int                                     calibrated = PCM_CALIBRATION_INTERVAL - 2; // keeps track is the clock calibration needed
+	string                                  program = string(argv[0]);
 	PCM::ExtendedCustomCoreEventDescription conf;
-	bool show_partial_core_output = false;
-	std::bitset<MAX_CORES> ycores;
+	bool                                    show_partial_core_output = false;
+	std::bitset<MAX_CORES>                  ycores;
 
 	conf.fixedCfg = NULL; // default
 	conf.nGPCounters = 4;
