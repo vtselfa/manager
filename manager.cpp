@@ -152,7 +152,7 @@ class CAT_Policy_Slowfirst: public CAT_Policy
 	}
 
 	// It's important to NOT make distinctions between completed and not completed tasks...
-	// We asume that the events we care about have been programed as ev2 and ev3.
+	// We asume that the event we care about has been programed as ev2.
 	virtual void adjust(uint64_t current_interval, const vector<Task> &tasklist)
 	{
 		// Adjust only when the amount of intervals specified has passed
@@ -181,11 +181,10 @@ class CAT_Policy_Slowfirst: public CAT_Policy
 		{
 			const Task &task = tasklist[t];
 			uint64_t l2_miss_stalls = task.stats_acumulated.event[2];
-			uint64_t l3_miss_stalls = task.stats_acumulated.event[3];
-			v.push_back(pair(task.cpu, l2_miss_stalls + l3_miss_stalls));
+			v.push_back(pair(task.cpu, l2_miss_stalls));
 		}
 
-		// Sort in descending order by total stalls
+		// Sort in descending order by stalls
 		std::sort(begin(v), end(v),
 				[](const pair &t1, const pair &t2)
 				{
