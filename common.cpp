@@ -2,9 +2,10 @@
 #include "common.hpp"
 
 /* Opens an output stream and checks for errors. */
-std::ofstream open_ofstream(std::string path)
+std::ofstream open_ofstream(std::string path, ios_base::openmode mode = ios_base::out)
 {
-	std::ofstream f(path);
+	std::ofstream f;
+	f.open(path, mode);
 	if (!f)
 		throw std::runtime_error("Could not open " + path + ": " + strerror(errno));
 	return f;

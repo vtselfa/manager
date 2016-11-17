@@ -124,7 +124,7 @@ class CAT_Policy
 
 	// Derived classes should perform their operations here.
 	// The base class does nothing by default.
-	virtual void adjust(uint64_t current_interval, const vector<Task> &tasklist) {}
+	virtual void adjust(uint64_t, const vector<Task> &) {}
 };
 
 
@@ -753,7 +753,7 @@ bool stats_are_wrong(const Stats &s)
 }
 
 
-void loop(vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
+void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
 {
 	if (time_int_us <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -882,6 +882,7 @@ void clean(vector<Task> &tasklist, CAT &cat)
 }
 
 
+[[noreturn]]
 void clean_and_die(vector<Task> &tasklist, CAT &cat)
 {
 	cerr << "--- PANIC, TRYING TO CLEAN ---" << endl;
@@ -1087,7 +1088,7 @@ int main(int argc, char *argv[])
 			task_execute(task);
 
 		// Start doing things
-		loop(tasklist, coslist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
+		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.

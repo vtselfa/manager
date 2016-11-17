@@ -17,26 +17,42 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#include <vector>
 #include <boost/dynamic_bitset_fwd.hpp>
 
 
-#define MAX_CPUS 24
-#define MAX_WAYS 20
+class CAT
+{
+	private:
 
+	uint32_t max_cpus;
+	uint32_t max_ways;
+	uint32_t max_cos;
 
-boost::dynamic_bitset<> cos_get_cpus(std::string cos);
-void cos_set_cpus(std::string cos, boost::dynamic_bitset<> cpus);
+	dynamic_bitset<> read_default_schemata();
+	uint32_t read_max_num_cpus();
+	uint32_t read_max_num_cos();
 
-boost::dynamic_bitset<> cos_get_schemata(std::string cos);
-void cos_set_schemata(std::string cos, boost::dynamic_bitset<> schemata);
+	void create_cos(uint32_t cos);
+	void delete_cos(uint32_t cos);
+	bool exists_cos(uint32_t cos);
 
-std::vector<std::string> cos_get_tasks(std::string cos);
-void cos_set_tasks(std::string cos, std::vector<std::string> tasks);
-void cos_reset_tasks(std::string cos);
+	public:
 
-void cos_create(std::string cos, boost::dynamic_bitset<> schemata, std::vector<std::string> tasks);
-void cos_create(std::string cos, boost::dynamic_bitset<> schemata, boost::dynamic_bitset<> cpus, std::vector<std::string> tasks = {});
-void cos_delete(std::string cos);
+	CAT();
 
-void cat_reset();
+	~CAT() = default;
+
+	void set_schemata(uint32_t cos, uint64_t mask);
+	void reset_schemata(uint32_t cos);
+
+	void pin_cpu(uint32_t cos, uint32_t core);
+	void unpin_cpu(uint32_t core);
+	void reset_cpus(uint32_t cos);
+
+	void pin_task(uint32_t cos, uint32_t pid);
+	void unpin_task(uint32_t pid);
+	void reset_tasks(uint32_t cos);
+
+	void reset();
+	void print();
+}
