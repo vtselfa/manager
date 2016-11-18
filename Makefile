@@ -6,7 +6,7 @@ CXXFLAGS += -Wall -g -O0 -std=c++0x
 LIBS= -pthread -lrt -lboost_system -lboost_filesystem -lyaml-cpp -lpqos -lboost_program_options -lglib-2.0 -lpcm
 
 
-manager: common.o cat-intel.o manager.o manager_pcm.o
+manager: cat-intel.o cat-policy.o common.o config.o events-intel.o manager.o stats.o task.o 
 	make -C intel-pcm/lib
 	make -C intel-cmt-cat SHARED=0
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LIBS)

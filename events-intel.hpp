@@ -5,10 +5,7 @@
 #include <vector>
 
 #include "intel-pcm/cpucounters.h"
-
-
-// Global variables
-const int MAX_EVENTS = 4;
+#include "stats.hpp"
 
 
 // Prototipes
@@ -21,63 +18,6 @@ void pcm_reset();
 
 
 // Structures
-struct Stats
-{
-	// Core stats
-	uint64_t us; // Microseconds
-	uint64_t instructions;
-	uint64_t cycles;
-	uint64_t invariant_cycles;
-	double ipc;
-	double ipnc;     // Intructions per nominal cycles
-	double rel_freq; // Frequency relative to the nominal CPU frequency
-	double act_rel_freq;
-	uint64_t l3_kbytes_occ;
-	// System stats i.e. equal for all the cores
-	double mc_gbytes_rd; // In GB
-	double mc_gbytes_wt; // In GB
-	double proc_energy;  // In joules
-	double dram_energy;  // In joules
-	// Core events
-	uint64_t event[MAX_EVENTS];
-
-	Stats() = default;
-
-	Stats& operator+=(const Stats &o)
-	{
-		// Compute this metrics before modifying other things
-		rel_freq     = ((rel_freq * invariant_cycles) + (o.rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
-		act_rel_freq = ((act_rel_freq * invariant_cycles) + (o.act_rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
-
-		// Weighted mean, which assumes that all the interval had the same occupancy,
-		// which may be not true, because we only know the final result, but...
-		l3_kbytes_occ = ((l3_kbytes_occ * invariant_cycles) + (o.l3_kbytes_occ * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles);
-
-		us               += o.us;
-		instructions     += o.instructions;
-		cycles           += o.cycles;
-		invariant_cycles += o.invariant_cycles;
-		ipc              = (double) instructions / (double) cycles;     // We could also do a weighted mean
-		ipnc             = (double) instructions / (double) invariant_cycles; // We could also do a weighted mean
-		mc_gbytes_rd     += o.mc_gbytes_rd;
-		mc_gbytes_wt     += o.mc_gbytes_wt;
-		proc_energy      += o.proc_energy;
-		dram_energy      += o.dram_energy;
-		for (int i = 0; i < MAX_EVENTS; i++)
-			event[i] += o.event[i];
-		return *this;
-	}
-
-	friend Stats operator+(Stats a, const Stats &b)
-	{
-		a += b;
-		return a;
-	}
-
-	void print(std::ostream &out, bool csv_format = true) const;
-};
-
-
 struct CoreEvent
 {
 	char     name[256];
