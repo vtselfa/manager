@@ -41,15 +41,40 @@ class CAT_Policy_Slowfirst: public CAT_Policy
 	std::vector<uint64_t> masks;
 
 	// Configure CAT with the provided masks
-	void set_masks(std::vector<uint64_t> &masks);
+	void set_masks(const std::vector<uint64_t> &masks);
+	void check_masks(const std::vector<uint64_t> &masks) const;
 
 	public:
 
-	CAT_Policy_Slowfirst(uint64_t every, std::vector<uint64_t> masks) : CAT_Policy(), every(every), masks(masks) {}
+	CAT_Policy_Slowfirst(uint64_t every, const std::vector<uint64_t> &masks) : CAT_Policy(), every(every), masks(masks)
+	{
+		check_masks(masks);
+	}
 
-	~CAT_Policy_Slowfirst() = default;
+	virtual ~CAT_Policy_Slowfirst() = default;
 
 	// It's important to NOT make distinctions between completed and not completed tasks...
 	// We asume that the event we care about has been programed as ev2.
+	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
+};
+
+
+class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
+{
+	protected:
+
+	size_t num_clusters;
+
+	public:
+
+	CAT_Policy_SF_Kmeans(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
+			CAT_Policy_Slowfirst(every, masks), num_clusters(num_clusters)
+	{
+		if (num_clusters != masks.size())
+			throw std::runtime_error("The number of masks ans clusters must be the same");
+	}
+
+	virtual ~CAT_Policy_SF_Kmeans() = default;
+
 	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
