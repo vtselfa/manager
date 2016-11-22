@@ -8,6 +8,7 @@
 #include "common.hpp"
 #include "config.hpp"
 #include "events-intel.hpp"
+#include "log.hpp"
 #include "stats.hpp"
 #include "task.hpp"
 
@@ -31,8 +32,15 @@ using std::to_string;
 using std::vector;
 using std::this_thread::sleep_for;
 using std::cout;
-using std::cerr;
 using std::endl;
+
+
+CAT cat_setup(const vector<Cos> &coslist, bool auto_reset);
+void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out);
+void clean(vector<Task> &tasklist, CAT &cat);
+[[noreturn]]
+void clean_and_die(vector<Task> &tasklist, CAT &cat);
+std::string program_options_to_string(const std::vector<po::option>& raw);
 
 
 CAT cat_setup(const vector<Cos> &coslist, bool auto_reset)
@@ -97,11 +105,11 @@ void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vect
 			// Deal with PCM transcient errors
 			if (stats_are_wrong(stats[i]) && task.stats_acumulated.instructions > 0)
 			{
-				cerr << "The results for the interval " << interval << " seem wrong:" << endl;
-				stats_print_header(cerr);
-				stats_print(stats[i], cerr, task.cpu, task.id, task.executable, interval, " ");
-				cerr << "They will be replaced with the values from the previous interval:" << endl;
-				stats_print(task.stats_interval, cerr, task.cpu, task.id, task.executable,  interval - 1, " ");
+				LOGWAR("The results for the interval " << interval << " seem wrong:");
+				LOGWAR(stats_header_to_string(" "));
+				LOGWAR(stats_to_string(stats[i], task.cpu, task.id, task.executable, interval, " "));
+				LOGWAR("They will be replaced with the values from the previous interval:");
+				LOGWAR(stats_to_string(task.stats_interval, task.cpu, task.id, task.executable,  interval - 1, " "));
 				stats[i] = task.stats_interval;
 			}
 
@@ -181,10 +189,9 @@ void clean(vector<Task> &tasklist, CAT &cat)
 }
 
 
-[[noreturn]]
 void clean_and_die(vector<Task> &tasklist, CAT &cat)
 {
-	cerr << "--- PANIC, TRYING TO CLEAN ---" << endl;
+	LOGERR("--- PANIC, TRYING TO CLEAN ---");
 
 	try
 	{
@@ -193,7 +200,7 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 	}
 	catch (const std::exception &e)
 	{
-		cerr << "Could not reset CAT: " << e.what() << endl;
+		LOGERR("Could not reset CAT: " << e.what());
 	}
 
 	try
@@ -202,7 +209,7 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 	}
 	catch (const std::exception &e)
 	{
-		cerr << "Could not reset PCM: " << e.what() << endl;
+		LOGERR("Could not reset PCM: " << e.what());
 	}
 
 	for (auto &task : tasklist)
@@ -214,17 +221,48 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 		}
 		catch (const std::exception &e)
 		{
-			cerr << e.what() << endl;
+			LOGERR(e.what());
 		}
 	}
 
-	exit(EXIT_FAILURE);
+	LOGFAT("Exit with error");
+}
+
+
+std::string program_options_to_string(const std::vector<po::option>& raw)
+{
+    string args;
+
+    for (const po::option& option: raw)
+    {
+        // if(option.unregistered) continue; // Skipping unknown options
+
+        if(option.value.empty())
+            args += option.string_key + "\n";
+        else
+        {
+            // this loses order of positional options
+            for (const std::string& value : option.value)
+            {
+                args += option.string_key + ": ";
+                args += value + "\n";
+            }
+        }
+    }
+
+    return args;
 }
 
 
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
+
+	// Default log conf
+	const string logfile = "manager.log";
+	const string min_clog = "war";
+	const string min_flog = "inf";
+	general_log::init(logfile, general_log::severity_level(min_clog), general_log::severity_level(min_flog));
 
 	po::options_description desc("Allowed options");
 	desc.add_options()
@@ -239,10 +277,13 @@ int main(int argc, char *argv[])
 		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after the program execution. Note that even if this is false a CAT policy may reset the CAT config during it's normal operation.")
-		// ("cores,c", po::value<vector<int>>()->composing()->multitoken(), "enable specific cores to output")
+		("clog-min", po::value<string>()->default_value(min_clog), "Minimum severity level to log into the console, defaults to warning")
+		("flog-min", po::value<string>()->default_value(min_flog), "Minimum severity level to log into the log file, defaults to info")
+		("log-file", po::value<string>()->default_value(logfile), "file used for the general application log")
 		;
 
 	bool option_error = false;
+	string options;
 	po::variables_map vm;
 	try
 	{
@@ -250,28 +291,31 @@ int main(int argc, char *argv[])
 		po::parsed_options parsed_options = po::command_line_parser(argc, argv)
 			.options(desc)
 			.run();
+		options = program_options_to_string(parsed_options.options);
 
 		po::store(parsed_options, vm);
 		po::notify(vm);
 	}
 	catch(const std::exception &e)
 	{
-		cerr << "Error: " << e.what() << "\n\n";
+		LOGERR(e.what());
 		option_error = true;
 	}
 
 	if (vm.count("help") || option_error)
 	{
 		cout << desc << endl;
-		exit(EXIT_SUCCESS);
+		exit(option_error ? EXIT_FAILURE : EXIT_SUCCESS);
 	}
 
-	// Some checks...
-	if (vm["ti"].as<double>() * vm["mi"].as<uint32_t>() >= 365ULL * 24ULL * 3600ULL)
-	{
-		cerr << "You want to execute the programs for more than a year... That, or you are using negative numbers for interval time / max number of intervals." << endl;
-		exit(EXIT_FAILURE);
-	}
+	// Log init with user defined parameters
+	general_log::init(
+			vm["log-file"].as<string>(),
+			general_log::severity_level(vm["clog-min"].as<string>()),
+			general_log::severity_level(vm["flog-min"].as<string>()));
+
+	// Log the program options
+	LOGINF("Program options:\n" + options);
 
 	// Set CPU affinity for not interfering with the executed workloads
 	if (vm.count("cpu-affinity"))
@@ -304,13 +348,11 @@ int main(int argc, char *argv[])
 	}
 	catch(const YAML::ParserException &e)
 	{
-		cerr << string("Error in config file in line: ") + to_string(e.mark.line) + " col: " + to_string(e.mark.column) + " pos: " + to_string(e.mark.pos) + ": " + e.msg << endl;
-		exit(EXIT_FAILURE);
+		LOGFAT(string("Error in config file in line: ") + to_string(e.mark.line) + " col: " + to_string(e.mark.column) + " pos: " + to_string(e.mark.pos) + ": " + e.msg);
 	}
 	catch(const std::exception &e)
 	{
-		cerr << "Error reading config file '" + config_file + "': " << e.what() << endl;
-		exit(EXIT_FAILURE);
+		LOGFAT("Error reading config file '" + config_file + "': " + e.what());
 	}
 
 	try
@@ -323,8 +365,7 @@ int main(int argc, char *argv[])
 	}
 	catch (const std::exception &e)
 	{
-		cerr << e.what() << endl;
-		exit(EXIT_FAILURE);
+		LOGFAT(e.what());
 	}
 
 	try
@@ -351,7 +392,7 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		cerr << "Error: " << e.what() << endl;
+		LOGERR(e.what());
 		clean_and_die(tasklist, catpol->get_cat());
 	}
 }

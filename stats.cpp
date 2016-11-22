@@ -1,4 +1,5 @@
 #include <iomanip>
+#include <sstream>
 
 #include <boost/io/ios_state.hpp>
 
@@ -39,45 +40,44 @@ Stats operator+(Stats a, const Stats &b)
 }
 
 
-void stats_final_print_header(std::ostream &out, const std::string &sep)
+std::string stats_final_header_to_string(const std::string &sep)
 {
-	out << "core"             << sep;
-	out << "app"              << sep;
-	out << "us"               << sep;
-	out << "instructions"     << sep;
-	out << "cycles"           << sep;
-	out << "invariant_cycles" << sep;
-	out << "ipc"              << sep;
-	out << "ipnc"             << sep;
-	out << "rel_freq"         << sep;
-	out << "act_rel_freq"     << sep;
-	out << "l3_kbytes_occ"    << sep;
-	out << "mc_gbytes_rd"     << sep;
-	out << "mc_gbytes_wt"     << sep;
-	out << "proc_energy"      << sep;
-	out << "dram_energy"      << sep;
+	std::string result =
+			"core"             + sep +
+			"app"              + sep +
+			"us"               + sep +
+			"instructions"     + sep +
+			"cycles"           + sep +
+			"invariant_cycles" + sep +
+			"ipc"              + sep +
+			"ipnc"             + sep +
+			"rel_freq"         + sep +
+			"act_rel_freq"     + sep +
+			"l3_kbytes_occ"    + sep +
+			"mc_gbytes_rd"     + sep +
+			"mc_gbytes_wt"     + sep +
+			"proc_energy"      + sep +
+			"dram_energy"      + sep;
 
 	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
 	{
-		out << "ev" << i;
+		result += "ev" + std::to_string(i);
 		if (i < MAX_EVENTS - 1)
-			out << sep;
+			result += sep;
 	}
-	out << std::endl;
+	return result;
 }
 
 
-void stats_print_header(std::ostream &out, const std::string &sep)
+std::string stats_header_to_string(const std::string &sep)
 {
-	out << "interval" << sep;
-	stats_final_print_header(out);
+	return "interval" + sep + stats_final_header_to_string(sep);
 }
 
 
-void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
+std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
 {
-	boost::io::ios_all_saver guard(out); // Saves current flags and format
-
+	std::ostringstream out;
 	if (interval != -1ULL)
 		out << interval       << sep;
 	out << cpu                << sep << std::setfill('0') << std::setw(2);
@@ -101,7 +101,25 @@ void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, c
 		if (i < MAX_EVENTS - 1)
 			out << sep;
 	}
-	out << std::endl;
+	return out.str();
+}
+
+
+void stats_final_print_header(std::ostream &out, const std::string &sep)
+{
+	out << stats_final_header_to_string(sep) << std::endl;
+}
+
+
+void stats_print_header(std::ostream &out, const std::string &sep)
+{
+	out << stats_header_to_string(sep) << std::endl;
+}
+
+
+void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
+{
+	out << stats_to_string(s, cpu, id, app, interval, sep) << std::endl;
 }
 
 
