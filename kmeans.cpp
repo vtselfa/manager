@@ -2,6 +2,8 @@
 #include <cmath>
 #include <limits>
 
+#include <fmt/format.h>
+
 #include "kmeans.hpp"
 
 
@@ -42,6 +44,17 @@ void Cluster::updateMeans()
 }
 
 
+std::string Cluster::to_string() const
+{
+	size_t i;
+	std::string values_str;
+	for (i = 0; i < centroid.size() - 1; i++)
+		values_str += fmt::format("{:.3g}", centroid[i]) + ", ";
+	values_str += fmt::format("{:g}", centroid[i]);
+	return fmt::format("{{id: {}, values: [{}], num_points: {}}}", id, values_str, points.size());
+}
+
+
 int KMeans::nearestCluster(size_t k, const std::vector<Cluster> &clusters, const Point &point)
 {
 	assert(clusters.size() > 0);
@@ -70,8 +83,19 @@ void KMeans::initClusters(size_t k, const std::vector<Point> &points, std::vecto
 	for (size_t i = 0 ; i < k ; i++)
 	{
 		size_t index = round(dist * i);
-		clusters.push_back(Cluster(points[index].values));
+		clusters.push_back(Cluster(i, points[index].values));
 	}
+}
+
+
+std::string KMeans::to_string(const std::vector<Cluster> &clusters)
+{
+	std::string result = "[";
+	size_t i;
+	for (i = 0; i < clusters.size() - 1; i++)
+		result += clusters[i].to_string() + ", ";
+	result += clusters[i].to_string() + "]";
+	return result;
 }
 
 

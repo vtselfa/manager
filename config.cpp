@@ -42,8 +42,10 @@ std::shared_ptr<CAT_Policy> config_read_cat_policy(const YAML::Node &config)
 		return std::make_shared<CAT_Policy_Slowfirst>(every, masks);
 	}
 
-	else if (kind == "slowfirst_kmeans")
+	else if (kind == "slowfirst_kmeans" || kind == "slowfirst_kmeans2")
 	{
+		// Common
+
 		// Check that required fields exist
 		for (string field : {"every", "cos", "num_clusters"})
 			if (!policy[field])
@@ -58,7 +60,20 @@ std::shared_ptr<CAT_Policy> config_read_cat_policy(const YAML::Node &config)
 		if (masks.size() <= 2)
 			throw std::runtime_error("The '" + kind + "' CAT policy needs at least two COS");
 
-		return std::make_shared<CAT_Policy_SF_Kmeans>(every, masks, num_clusters);
+		if (kind == "slowfirst_kmeans")
+			return std::make_shared<CAT_Policy_SF_Kmeans>(every, masks, num_clusters);
+
+		// Only slowfirst_kmeans2
+
+		// Check that required fields exist
+		for (string field : {"every_m"})
+			if (!policy[field])
+				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+
+		// Read fields
+		uint64_t every_m = policy["every_m"].as<uint64_t>();
+
+		return std::make_shared<CAT_Policy_SF_Kmeans2>(every, masks, num_clusters, every_m);
 	}
 
 	else

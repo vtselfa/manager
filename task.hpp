@@ -26,7 +26,8 @@ struct Task
 	std::string rundir = ""; // Set before executing the task
 	int pid       = 0;  // Set after executing the task
 
-	Stats stats_acumulated = Stats(); // From the start of the execution
+	Stats stats_acumulated = Stats(); // From the start of the execution, but reseted each time it arrives to the target goal
+	Stats stats_total = Stats();      // From the start of the execution
 	Stats stats_interval   = Stats(); // Only last interval
 
 	bool limit_reached = false; // Has the instruction limit been reached?

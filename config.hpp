@@ -6,7 +6,7 @@
 
 
 class CAT_Policy;
-class Task;;
+struct Task;
 
 
 struct Cos

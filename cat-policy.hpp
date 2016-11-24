@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "cat-intel.hpp"
+#include "kmeans.hpp"
 #include "task.hpp"
 
 
@@ -58,12 +59,12 @@ class CAT_Policy_Slowfirst: public CAT_Policy
 	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
 
-
 class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
 {
 	protected:
 
 	size_t num_clusters;
+	std::vector<Cluster> clusters;
 
 	public:
 
@@ -75,6 +76,23 @@ class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
 	}
 
 	virtual ~CAT_Policy_SF_Kmeans() = default;
+
+	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
+};
+
+
+class CAT_Policy_SF_Kmeans2: public CAT_Policy_SF_Kmeans
+{
+	protected:
+
+	uint64_t every_m;
+
+	public:
+
+	CAT_Policy_SF_Kmeans2(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters, uint64_t every_m) :
+			CAT_Policy_SF_Kmeans(every, masks, num_clusters), every_m(every_m) {}
+
+	virtual ~CAT_Policy_SF_Kmeans2() = default;
 
 	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
 };

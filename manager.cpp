@@ -1,3 +1,4 @@
+#include <clocale>
 #include <iostream>
 #include <thread>
 
@@ -116,6 +117,7 @@ void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vect
 			// Count stats
 			task.stats_interval    = stats[i];
 			task.stats_acumulated += stats[i];
+			task.stats_total      += stats[i];
 
 			// Instruction limit reached
 			if (task.stats_acumulated.instructions >= task.max_instr)
@@ -257,6 +259,9 @@ std::string program_options_to_string(const std::vector<po::option>& raw)
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
+
+	// Set the locale to the one defined in the corresponding enviroment variable
+	std::setlocale(LC_ALL, "");
 
 	// Default log conf
 	const string logfile = "manager.log";
