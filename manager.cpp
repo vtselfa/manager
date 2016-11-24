@@ -233,26 +233,27 @@ void clean_and_die(vector<Task> &tasklist, CAT &cat)
 
 std::string program_options_to_string(const std::vector<po::option>& raw)
 {
-    string args;
+	string args;
 
-    for (const po::option& option: raw)
-    {
-        // if(option.unregistered) continue; // Skipping unknown options
+	for (const po::option& option: raw)
+	{
+		// if(option.unregistered) continue; // Skipping unknown options
 
-        if(option.value.empty())
-            args += option.string_key + "\n";
-        else
-        {
-            // this loses order of positional options
-            for (const std::string& value : option.value)
-            {
-                args += option.string_key + ": ";
-                args += value + "\n";
-            }
-        }
-    }
+		if(option.value.empty())
+			args += option.string_key.size() == 1 ? "-" : "--" + option.string_key + "\n";
+		else
+		{
+			// this loses order of positional options
+			for (const std::string& value : option.value)
+			{
+				args += option.string_key.size() == 1 ? "-" : "--";
+				args += option.string_key + ": ";
+				args += value + "\n";
+			}
+		}
+	}
 
-    return args;
+	return args;
 }
 
 
