@@ -11,6 +11,10 @@ class CAT_Policy
 {
 	protected:
 
+	const uint32_t min_num_ways = 2;
+	const uint32_t complete_mask = 0xfffff;
+	const uint32_t num_ways = 20;
+	const uint32_t num_cos = 4;
 	CAT cat;
 
 	public:
@@ -69,11 +73,7 @@ class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
 	public:
 
 	CAT_Policy_SF_Kmeans(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			CAT_Policy_Slowfirst(every, masks), num_clusters(num_clusters)
-	{
-		if (num_clusters != masks.size())
-			throw std::runtime_error("The number of masks ans clusters must be the same");
-	}
+			CAT_Policy_Slowfirst(every, masks), num_clusters(num_clusters) {}
 
 	virtual ~CAT_Policy_SF_Kmeans() = default;
 

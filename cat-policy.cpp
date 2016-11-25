@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <tuple>
 
@@ -153,43 +154,74 @@ void CAT_Policy_SF_Kmeans2::adjust(uint64_t current_interval, const std::vector<
 
 	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
 
-	auto diffs = std::vector<uint64_t>(clusters.size() - 1);
-	auto &prev = clusters[0];
-	for (size_t i = 1; i < clusters.size(); i++)
+	auto diffs = std::vector<uint64_t>(clusters.size());
+	auto linear = std::vector<double>(clusters.size());
+	auto quadratic = std::vector<double>(clusters.size());
+	auto exponential = std::vector<double>(clusters.size());
+
+	for (size_t i = 0; i < clusters.size(); i++)
 	{
-		diffs[i - 1] = prev.getCentroid()[0] - clusters[i].getCentroid()[0];
-		prev = clusters[i];
+		diffs[i] = clusters[i].getCentroid()[0];
+		if (i < clusters.size() - 1)
+			diffs[i] -= clusters[i + 1].getCentroid()[0];
+
+		linear[i] = diffs[i] / clusters[0].getCentroid()[0];
+		quadratic[i] = pow(linear[i], 2);
+		exponential[i] = exp(linear[i]);
 	}
+
 	LOGDEB("Intercluster distances:");
 	LOGDEB(diffs);
 
-	size_t pos = 0;
-	double max = 0;
-	for (size_t i = 0; i < diffs.size(); i++)
+	double ltot = 0;
+	double qtot = 0;
+	double etot = 0;
+	for (double &x : linear) ltot += x;
+	for (double &x : quadratic) qtot += x;
+	for (double &x : exponential) etot += x;
+
+	LOGDEB("Lineal, quadratic and exponential models:");
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
+
+	LOGDEB("Teoretical ways:");
+	for (double &x : linear) x = x / ltot * num_ways;
+	for (double &x : quadratic) x = x / qtot * num_ways;
+	for (double &x : exponential) x = x / etot * num_ways;
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
+
+	for (auto v : {&linear, &quadratic, &exponential})
 	{
-		if (diffs[i] > max)
+		double p = num_ways;
+		for (size_t i = 0; i < v->size(); i++)
 		{
-			max = diffs[i];
-			pos = i;
+			auto &x = (*v)[i];
+			x = p - x;
+			p = x;
 		}
+		for (size_t i = v->size() - 1; i > 0; i--)
+			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), min_num_ways);
+		(*v)[0] = num_ways;
 	}
-	LOGDEB("{{max: {:g}, pos: {}}}"_format(max, pos));
 
-	uint64_t &m1 = masks[masks.size() - pos - 1];
-	uint64_t &m2 = masks[masks.size() - pos - 2];
+	LOGDEB("Effective ways:");
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
 
-	if (m1 <= m2)
+	for (size_t i = 0;  i < clusters.size(); i++)
 	{
-		LOGDEB("No mask changes");
-		return;
+		size_t cos = masks.size() - i - 1;
+		uint32_t ways = exponential[i];
+		masks[cos] = (complete_mask >> (num_ways - ways));
 	}
-
-	m1 = (m1 | (m1 << 1)) & 0xfffff; // Add one bit to the left
-	m2 = __builtin_popcount(m2) > 2 ? m2 & (m2 >> 1) : m2; // Remove one bit from the left, but keep a minimum of two
-
-	set_masks(masks);
 
 	LOGDEB("Classes Of Service:");
 	for (size_t cos = masks.size() - 1; cos < masks.size(); cos--)
-		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}}}}}", cos, masks[cos]));
+		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}}}}}", cos, masks[cos], __builtin_popcount(masks[cos])));
+
+	set_masks(masks);
 }
