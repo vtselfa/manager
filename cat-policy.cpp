@@ -10,7 +10,16 @@
 #include "log.hpp"
 
 
-void CAT_Policy_Slowfirst::set_masks(const std::vector<uint64_t> &masks)
+namespace cat
+{
+namespace policy
+{
+
+
+using fmt::literals::operator""_format;
+
+
+void Slowfirst::set_masks(const std::vector<uint64_t> &masks)
 {
 	this->masks = masks;
 	for (uint32_t i = 0; i < masks.size(); i++)
@@ -18,7 +27,7 @@ void CAT_Policy_Slowfirst::set_masks(const std::vector<uint64_t> &masks)
 }
 
 
-void CAT_Policy_Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
+void Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
 {
 	uint64_t last_mask = 0;
 	std::string m;
@@ -36,12 +45,12 @@ void CAT_Policy_Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
 }
 
 
-void CAT_Policy_Slowfirst::adjust(uint64_t current_interval, const std::vector<Task> &tasklist)
+void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
 {
 	// It's important to NOT make distinctions between completed and not completed tasks...
 	// We asume that the event we care about has been programed as ev2.
 
-	// Adjust only when the amount of intervals specified has passed
+	// Apply only when the amount of intervals specified has passed
 	if (current_interval % every != 0)
 		return;
 
@@ -79,9 +88,9 @@ void CAT_Policy_Slowfirst::adjust(uint64_t current_interval, const std::vector<T
 }
 
 
-void CAT_Policy_SF_Kmeans::adjust(uint64_t current_interval, const std::vector<Task> &tasklist)
+void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
 {
-	// Adjust only when the amount of intervals specified has passed
+	// Apply the policy only when the amount of intervals specified has passed
 	if (current_interval % every != 0)
 		return;
 
@@ -143,16 +152,10 @@ void CAT_Policy_SF_Kmeans::adjust(uint64_t current_interval, const std::vector<T
 }
 
 
-void CAT_Policy_SF_Kmeans2::adjust(uint64_t current_interval, const std::vector<Task> &tasklist)
+void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
 {
-	using fmt::literals::operator""_format;
-
-	// Call parent first
-	CAT_Policy_SF_Kmeans::adjust(current_interval, tasklist);
-
-	// Adjust only when the amount of intervals specified has passed
-	if (current_interval % every_m != 0)
-		return;
+	// Call parent first for clustering the applications
+	SlowfirstClustered::apply(current_interval, tasklist);
 
 	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
 
@@ -227,3 +230,6 @@ void CAT_Policy_SF_Kmeans2::adjust(uint64_t current_interval, const std::vector<
 
 	set_masks(masks);
 }
+
+
+}} // cat::policy

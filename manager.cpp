@@ -37,10 +37,9 @@ using std::endl;
 
 
 CAT cat_setup(const vector<Cos> &coslist, bool auto_reset);
-void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out);
+void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out);
 void clean(vector<Task> &tasklist, CAT &cat);
-[[noreturn]]
-void clean_and_die(vector<Task> &tasklist, CAT &cat);
+[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT &cat);
 std::string program_options_to_string(const std::vector<po::option>& raw);
 
 
@@ -61,7 +60,7 @@ CAT cat_setup(const vector<Cos> &coslist, bool auto_reset)
 }
 
 
-void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
+void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
 {
 	if (time_int_us <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -156,7 +155,7 @@ void loop(vector<Task> &tasklist, std::shared_ptr<CAT_Policy> catpol, const vect
 			tasks_kill_and_restart(tasklist);
 
 		// Adjust CAT according to the selected policy
-		catpol->adjust(interval, tasklist);
+		catpol->apply(interval, tasklist);
 
 		// Adjust time with a PI controller
 		int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
@@ -343,7 +342,7 @@ int main(int argc, char *argv[])
 	// Read config
 	auto tasklist = vector<Task>();
 	auto coslist = vector<Cos>();
-	auto catpol = std::make_shared<CAT_Policy>(); // We want to use polimorfism, so we need a pointer
+	auto catpol = std::make_shared<cat::policy::Base>(); // We want to use polimorfism, so we need a pointer
 	string config_file;
 	try
 	{

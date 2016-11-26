@@ -4,9 +4,8 @@
 #include <memory>
 #include <vector>
 
-
-class CAT_Policy;
-struct Task;
+#include "cat-policy.hpp"
+#include "task.hpp"
 
 
 struct Cos
@@ -18,4 +17,4 @@ struct Cos
 };
 
 
-void config_read(const std::string &path, std::vector<Task> &tasklist, std::vector<Cos> &coslist, std::shared_ptr<CAT_Policy> &catpol);
+void config_read(const std::string &path, std::vector<Task> &tasklist, std::vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol);

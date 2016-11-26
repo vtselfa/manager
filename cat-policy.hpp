@@ -6,8 +6,14 @@
 #include "kmeans.hpp"
 #include "task.hpp"
 
+namespace cat
+{
+namespace policy
+{
 
-class CAT_Policy
+
+// Base class that does nothing
+class Base
 {
 	protected:
 
@@ -19,21 +25,23 @@ class CAT_Policy
 
 	public:
 
-	CAT_Policy() = default;
+	Base() = default;
 
 	void set_cat(CAT cat)      { this->cat = cat; }
 	CAT& get_cat()             { return cat; }
 	const CAT& get_cat() const { return cat; }
 
-	virtual ~CAT_Policy() = default;
+	virtual ~Base() = default;
 
 	// Derived classes should perform their operations here.
 	// The base class does nothing by default.
-	virtual void adjust(uint64_t, const std::vector<Task> &) {}
+	virtual void apply(uint64_t, const std::vector<Task> &) {}
 };
 
 
-class CAT_Policy_Slowfirst: public CAT_Policy
+// Sort applications by slowdown and assign the slowest to COS3, the second most slowest
+// to COS2, the third to COS1 and the rest to COS0.
+class Slowfirst: public Base
 {
 	protected:
 
@@ -51,19 +59,23 @@ class CAT_Policy_Slowfirst: public CAT_Policy
 
 	public:
 
-	CAT_Policy_Slowfirst(uint64_t every, const std::vector<uint64_t> &masks) : CAT_Policy(), every(every), masks(masks)
+	Slowfirst(uint64_t every, const std::vector<uint64_t> &masks) : Base(), every(every), masks(masks)
 	{
 		check_masks(masks);
 	}
 
-	virtual ~CAT_Policy_Slowfirst() = default;
+	virtual ~Slowfirst() = default;
 
 	// It's important to NOT make distinctions between completed and not completed tasks...
 	// We asume that the event we care about has been programed as ev2.
-	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
+typedef Slowfirst Sf;
 
-class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
+
+// Cluster appplications by slowdown and then map each cluster to a COS.
+// Since there is a one-to-one mapping from clusters to COSs, no more than 4 clusters are allowed.
+class SlowfirstClustered: public Slowfirst
 {
 	protected:
 
@@ -72,27 +84,30 @@ class CAT_Policy_SF_Kmeans: public CAT_Policy_Slowfirst
 
 	public:
 
-	CAT_Policy_SF_Kmeans(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			CAT_Policy_Slowfirst(every, masks), num_clusters(num_clusters) {}
+	SlowfirstClustered(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
+			Slowfirst(every, masks), num_clusters(num_clusters) {}
 
-	virtual ~CAT_Policy_SF_Kmeans() = default;
+	virtual ~SlowfirstClustered() = default;
 
-	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
+typedef SlowfirstClustered SfC;
 
 
-class CAT_Policy_SF_Kmeans2: public CAT_Policy_SF_Kmeans
+// Applications are clustered and mapped to COS, but the amount of ways assigned to each COS is determined
+// by a simple model, which uses the slowdown per cluster as input.
+class SlowfirstClusteredAdjusted: public SlowfirstClustered
 {
-	protected:
-
-	uint64_t every_m;
-
 	public:
 
-	CAT_Policy_SF_Kmeans2(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters, uint64_t every_m) :
-			CAT_Policy_SF_Kmeans(every, masks, num_clusters), every_m(every_m) {}
+	SlowfirstClusteredAdjusted(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
+			SlowfirstClustered(every, masks, num_clusters) {}
 
-	virtual ~CAT_Policy_SF_Kmeans2() = default;
+	virtual ~SlowfirstClusteredAdjusted() = default;
 
-	virtual void adjust(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
+typedef SlowfirstClusteredAdjusted SfCD;
+
+
+}} // cat::policy
