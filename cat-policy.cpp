@@ -45,6 +45,8 @@ void CAT_Policy_Slowfirst::adjust(uint64_t current_interval, const std::vector<T
 	if (current_interval % every != 0)
 		return;
 
+	LOGDEB("function: {}, interval: {}"_format(__PRETTY_FUNCTION__, current_interval));
+
 	// (Core, Combined stalls) tuple
 	typedef std::tuple<uint32_t, uint64_t> pair;
 	auto v = std::vector<pair>();

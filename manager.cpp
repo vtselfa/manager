@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
 	// Default log conf
 	const string logfile = "manager.log";
 	const string min_clog = "war";
-	const string min_flog = "inf";
+	const string min_flog = "dbg";
 	general_log::init(logfile, general_log::severity_level(min_clog), general_log::severity_level(min_flog));
 
 	po::options_description desc("Allowed options");
@@ -382,10 +382,13 @@ int main(int argc, char *argv[])
 			events = vm["event"].as<vector<string>>();
 
 		// Execute and immediately pause tasks
+		LOGINF("Launching and pausing tasks");
 		for (auto &task : tasklist)
 			task_execute(task);
+		LOGINF("Tasks ready");
 
 		// Start doing things
+		LOGINF("Start main loop");
 		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
