@@ -70,6 +70,20 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		return std::make_shared<cat::policy::SlowfirstClusteredAdjusted>(every, masks, num_clusters);
 	}
 
+	else if (kind == "sfcoa")
+	{
+		// Check that required fields exist
+		for (string field : {"every"})
+			if (!policy[field])
+				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+
+		// Read fields
+		uint64_t every = policy["every"].as<uint64_t>();
+
+		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
+		return std::make_shared<cat::policy::SlowfirstClusteredOptimallyAdjusted>(every);
+	}
+
 	else
 		throw std::runtime_error("Unknown CAT policy: '" + kind + "'");
 }

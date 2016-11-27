@@ -208,7 +208,7 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 			p = x;
 		}
 		for (size_t i = v->size() - 1; i > 0; i--)
-			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), min_num_ways);
+			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), cat::min_num_ways);
 		(*v)[0] = num_ways;
 	}
 
@@ -227,6 +227,155 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 	LOGDEB("Classes Of Service:");
 	for (size_t cos = masks.size() - 1; cos < masks.size(); cos--)
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}}}}}", cos, masks[cos], __builtin_popcount(masks[cos])));
+
+	set_masks(masks);
+}
+
+
+void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
+{
+	// Apply the policy only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+		return;
+
+	auto data = std::vector<Point>();
+
+	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
+
+	// Put data in the format KMeans expects
+	LOGDEB("Tasks:");
+	for (uint32_t t = 0; t < tasklist.size(); t++)
+	{
+		const Task &task = tasklist[t];
+		uint64_t l2_miss_stalls = task.stats_total.event[2];
+		data.push_back(Point(task.id, {(double) l2_miss_stalls}));
+		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
+	}
+
+	LOGDEB("Max number of clusters: {}"_format(num_clusters));
+	KMeans::clusterize_optimally(num_clusters, data, clusters, 100);
+
+	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));
+
+	// Sort clusters in descending order
+	std::sort(begin(clusters), end(clusters),
+			[](const Cluster &c1, const Cluster &c2)
+			{
+				return c1.getCentroid()[0] > c2.getCentroid()[0];
+			});
+
+	LOGDEB("Sorted clusters:");
+	for (const auto &cluster : clusters)
+		LOGDEB(cluster.to_string());
+
+	// Map clusters to COSs
+	LOGDEB("CPU mappings:");
+	for (size_t c = 0; c < clusters.size(); c++)
+	{
+		size_t cos  = cat::num_cos - c - 1;
+		const auto &cluster = clusters[c];
+
+		// Iterate tasks in cluster and put them in the adequate COS
+		std::string task_ids;
+		size_t i = 0;
+		for(const auto &item : cluster.getPoints())
+		{
+			const size_t index = item.first;
+			const Task &task = tasklist[index];
+			LOGDEB("CPU {} {} to COS {}"_format(task.cpu, task.executable, cos));
+			cat.set_cos_cpu(cos, task.cpu);
+			task_ids += i < cluster.getPoints().size() - 1 ?
+					std::to_string(task.id) + ", ":
+					std::to_string(task.id);
+			i++;
+		}
+	}
+
+	auto diffs = std::vector<uint64_t>(clusters.size());
+	auto linear = std::vector<double>(clusters.size());
+	auto quadratic = std::vector<double>(clusters.size());
+	auto exponential = std::vector<double>(clusters.size());
+
+	for (size_t i = 0; i < clusters.size(); i++)
+	{
+		diffs[i] = clusters[i].getCentroid()[0];
+		if (i < clusters.size() - 1)
+			diffs[i] -= clusters[i + 1].getCentroid()[0];
+
+		linear[i] = diffs[i] / clusters[0].getCentroid()[0];
+		quadratic[i] = pow(linear[i], 2);
+		exponential[i] = exp(linear[i]);
+	}
+
+	LOGDEB("Intercluster distances:");
+	LOGDEB(diffs);
+
+	double ltot = 0;
+	double qtot = 0;
+	double etot = 0;
+	for (double &x : linear) ltot += x;
+	for (double &x : quadratic) qtot += x;
+	for (double &x : exponential) etot += x;
+
+	LOGDEB("Lineal, quadratic and exponential models:");
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
+
+	LOGDEB("Teoretical ways:");
+	for (double &x : linear) x = x / ltot * num_ways;
+	for (double &x : quadratic) x = x / qtot * num_ways;
+	for (double &x : exponential) x = x / etot * num_ways;
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
+
+	for (auto v : {&linear, &quadratic, &exponential})
+	{
+		double p = num_ways;
+		for (size_t i = 0; i < v->size(); i++)
+		{
+			auto &x = (*v)[i];
+			x = p - x;
+			p = x;
+		}
+		for (size_t i = v->size() - 1; i > 0; i--)
+			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), cat::min_num_ways);
+		(*v)[0] = num_ways;
+	}
+
+	LOGDEB("Effective ways:");
+	LOGDEB(linear);
+	LOGDEB(quadratic);
+	LOGDEB(exponential);
+
+	for (auto &mask : masks)
+		mask = cat::complete_mask;
+	for (size_t i = 0;  i < clusters.size(); i++)
+	{
+		size_t cos = masks.size() - i - 1;
+		uint32_t ways = exponential[i];
+		masks[cos] = (complete_mask >> (num_ways - ways));
+	}
+
+	LOGDEB("Classes Of Service:");
+	size_t c = 0;
+	for (size_t cos = masks.size() - 1; cos < masks.size(); cos--)
+	{
+		std::string task_ids;
+		if (c < clusters.size())
+		{
+			for (const auto &item : clusters[c].getPoints())
+				task_ids += std::to_string(item.first) + ", ";
+			if (clusters[c].getPoints().size() >= 2)
+			{
+				task_ids.pop_back();
+				task_ids.pop_back(); // Remove last coma and space
+			}
+		}
+		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}, tasks: [{}]}}}}", cos, masks[cos], __builtin_popcount(masks[cos]), task_ids));
+		c++;
+	}
 
 	set_masks(masks);
 }

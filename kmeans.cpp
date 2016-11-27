@@ -7,6 +7,17 @@
 #include "kmeans.hpp"
 
 
+// Euclidian distance between two points
+double Point::distance(const Point &o) const
+{
+	double sum = 0;
+	assert(values.size() == o.values.size());
+	for(size_t i = 0; i < values.size(); i++)
+		sum += pow(values[i] - o.values[i], 2);
+	return sqrt(sum);
+}
+
+
 void Cluster::addPoint(const Point *point)
 {
 	points[point->id] = point;
@@ -19,6 +30,7 @@ void Cluster::removePoint(int id_point)
 }
 
 
+// Distance to the cluster centroid
 double Cluster::distance(const Point &p) const
 {
 	assert(p.values.size() == centroid.size());
@@ -27,6 +39,24 @@ double Cluster::distance(const Point &p) const
 	for(size_t i = 0; i < p.values.size(); i++)
 		sum += pow(centroid[i] - p.values[i], 2);
 	return sqrt(sum);
+}
+
+
+// Average distance to the points in the cluster
+double Cluster::mean_distance(const Point &p) const
+{
+	assert(points.size() > 0);
+	size_t n = points.count(p.id) ? points.size() - 1 : points.size(); // If the point is in the cluster we ignore it
+	double sum = 0;
+	if (n == 0) // This is the only point in the cluster
+		return 0;
+	for(const auto &item : points)
+	{
+		if (item.first == p.id)
+			continue;
+		sum += p.distance(*item.second);
+	}
+	return sum / n;
 }
 
 
@@ -77,8 +107,38 @@ int KMeans::nearestCluster(size_t k, const std::vector<Cluster> &clusters, const
 }
 
 
+// Computes the global silhouette index, a value between -1 and 1, where the closer to 1, the best
+double KMeans::silhouette(const std::vector<Cluster> &clusters)
+{
+	double result = 0; // Global silhouette index
+	for (size_t k = 0; k < clusters.size(); k++)
+	{
+		double sk = 0; // Silhouette index for the cluster
+		for (const auto &item : clusters[k].getPoints())
+		{
+			const auto &point = *item.second;
+			double a = clusters[k].mean_distance(point);
+			double b = std::numeric_limits<double>::max();
+			for (size_t k2 = 0; k2 < clusters.size(); k2++)
+			{
+				if (k == k2) continue;
+				b = std::min(b, clusters[k2].mean_distance(point));
+			}
+			double si = (b - a) / std::max(a, b); // Silhouette index for the point
+			sk += si;
+		}
+		sk /= clusters[k].getPoints().size();
+		result += sk;
+	}
+	result /= clusters.size();
+	assert(result >= -1 && result <= 1);
+	return result / clusters.size();
+}
+
+
 void KMeans::initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters)
 {
+	clusters.clear();
 	double dist = (double) points.size() / (double) k;
 	for (size_t i = 0 ; i < k ; i++)
 	{
@@ -144,4 +204,32 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 	}
 
 	return iter;
+}
+
+
+size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter)
+{
+	double best_result = -1;
+	size_t best_k = 0;
+	std::vector<Cluster> best_clusters;
+	size_t best_iter = 0;
+
+	for (size_t k = 2; k <= max_k; k++)
+	{
+		size_t iter = clusterize(k, points, clusters, max_iter);
+		double result = silhouette(clusters);
+		if (result > best_result)
+		{
+			best_result = result;
+			best_k = k;
+			best_clusters = clusters;
+			best_iter = iter;
+		}
+	}
+	clusters = best_clusters;
+
+	assert(best_result >= -1 && best_result <= 1);
+	assert(best_k == clusters.size());
+
+	return best_iter;
 }

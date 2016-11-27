@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <cassert>
 
 #include "cat-intel.hpp"
 #include "kmeans.hpp"
@@ -8,6 +9,14 @@
 
 namespace cat
 {
+
+
+const uint32_t min_num_ways = 2;
+const uint32_t complete_mask = 0xfffff;
+const uint32_t num_ways = 20;
+const uint32_t num_cos = 4;
+
+
 namespace policy
 {
 
@@ -17,10 +26,6 @@ class Base
 {
 	protected:
 
-	const uint32_t min_num_ways = 2;
-	const uint32_t complete_mask = 0xfffff;
-	const uint32_t num_ways = 20;
-	const uint32_t num_cos = 4;
 	CAT cat;
 
 	public:
@@ -85,7 +90,10 @@ class SlowfirstClustered: public Slowfirst
 	public:
 
 	SlowfirstClustered(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			Slowfirst(every, masks), num_clusters(num_clusters) {}
+			Slowfirst(every, masks), num_clusters(num_clusters)
+	{
+		assert(num_clusters > 0);
+	}
 
 	virtual ~SlowfirstClustered() = default;
 
@@ -107,7 +115,23 @@ class SlowfirstClusteredAdjusted: public SlowfirstClustered
 
 	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
 };
-typedef SlowfirstClusteredAdjusted SfCD;
+typedef SlowfirstClusteredAdjusted SfCA;
+
+
+// Applications are clustered with the optimal number of clusters and mapped to COS, and the amount of ways assigned to each COS is determined
+// by a simple model, which uses the slowdown per cluster as input.
+class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
+{
+	public:
+
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every) :
+			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos) {}
+
+	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
+
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
+};
+typedef SlowfirstClusteredOptimallyAdjusted SfCOA;
 
 
 }} // cat::policy

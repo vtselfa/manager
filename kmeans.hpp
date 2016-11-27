@@ -13,6 +13,8 @@ class Point
 
 	Point(size_t id, const std::vector<double>& values) :
 			id(id), values(values) {}
+
+	double distance(const Point &o) const;
 };
 
 
@@ -21,7 +23,7 @@ class Cluster
 	private:
 
 	std::vector<double> centroid;
-	std::unordered_map<int, const Point *> points;
+	std::unordered_map<size_t, const Point *> points;
 
 	public:
 
@@ -32,9 +34,10 @@ class Cluster
 	void addPoint(const Point *point);
 	void removePoint(int id_point);
 	double distance(const Point &p) const;
+	double mean_distance(const Point &p) const;
 	void updateMeans();
 	const std::vector<double>& getCentroid() const { return centroid; }
-	const std::unordered_map<int, const Point *>& getPoints() const { return points; }
+	const auto& getPoints() const { return points; }
 	std::string to_string() const;
 };
 
@@ -51,11 +54,18 @@ class KMeans
 	static
 	void initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters);
 
+	// Computes the Silhouette index
+	static
+	double silhouette(const std::vector<Cluster> &clusters);
+
 	public:
 
 	// Clusterize
 	static
 	size_t clusterize(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
+
+	static
+	size_t clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
 
 	static
 	std::string to_string(const std::vector<Cluster> &clusters);
