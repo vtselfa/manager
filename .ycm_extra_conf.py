@@ -55,7 +55,7 @@ flags = [
     '-Wpointer-arith',
     '-Wunreachable-code',
     '-Wwrite-strings',
-    '-std=c++11',
+    '-std=c++14',
     '-isystem',
     '/usr/include/c++/5',
     '-isystem',
