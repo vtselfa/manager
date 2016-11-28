@@ -5,6 +5,10 @@
 #include <fmt/format.h>
 
 #include "kmeans.hpp"
+#include "log.hpp"
+
+
+using fmt::literals::operator""_format;
 
 
 // Euclidian distance between two points
@@ -218,6 +222,7 @@ size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &poin
 	{
 		size_t iter = clusterize(k, points, clusters, max_iter);
 		double result = silhouette(clusters);
+		LOGDEB("k {} has a silhouette of {}"_format(k, result));
 		if (result > best_result)
 		{
 			best_result = result;
