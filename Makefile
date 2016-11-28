@@ -2,7 +2,7 @@ CPPFLAGS += -I. -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/inc
 CPPFLAGS += -Lintel-cmt-cat/lib -Lintel-pcm/lib -Lfmt/fmt
 CPPFLAGS += -DBOOST_LOG_DYN_LINK
 
-CXXFLAGS += -Wall -Wextra -g -O0 -std=c++14
+CXXFLAGS += -Wall -g -O0 -std=c++14
 
 LIBS = -lpthread -lrt -lboost_system -lboost_log -lboost_log_setup -lboost_thread -lboost_filesystem -lyaml-cpp -lpqos -lboost_program_options -lglib-2.0 -lpcm -lfmt
 

@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <ostream>
-#include <vector>
 
 
 // Global variables
@@ -29,42 +28,9 @@ struct Stats
 	double dram_energy;  // In joules
 
 	// Core events
-	std::vector<uint64_t> event;
+	uint64_t event[MAX_EVENTS];
 
-	Stats() : event(MAX_EVENTS, 0) {}
-
-	Stats
-	(
-			uint64_t us,
-			uint64_t instructions,
-			uint64_t cycles,
-			uint64_t invariant_cycles,
-			double ipc,
-			double ipnc,
-			double rel_freq,
-			double act_rel_freq,
-			uint64_t l3_kbytes_occ,
-			double mc_gbytes_rd,
-			double mc_gbytes_wt,
-			double proc_energy,
-			double dram_energy,
-			const std::vector<uint64_t> &event
-	) :
-			us(us),
-			instructions(instructions),
-			cycles(cycles),
-			invariant_cycles(invariant_cycles),
-			ipc(ipc),
-			ipnc(ipnc),
-			rel_freq(rel_freq),
-			act_rel_freq(act_rel_freq),
-			l3_kbytes_occ(l3_kbytes_occ),
-			mc_gbytes_rd(mc_gbytes_rd),
-			mc_gbytes_wt(mc_gbytes_wt),
-			proc_energy(proc_energy),
-			dram_energy(dram_energy),
-			event(event)
-	{}
+	Stats() = default;
 
 	Stats& operator+=(const Stats &o);
 	friend Stats operator+(Stats a, const Stats &b);
