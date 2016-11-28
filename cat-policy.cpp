@@ -309,11 +309,11 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));
 
-	// Sort clusters in ASCENDING order
+	// Sort clusters in DESCENDING order
 	std::sort(begin(clusters), end(clusters),
 			[](const Cluster &c1, const Cluster &c2)
 			{
-				return c1.getCentroid()[0] < c2.getCentroid()[0];
+				return c1.getCentroid()[0] > c2.getCentroid()[0];
 			});
 
 	LOGDEB("Sorted clusters:");
@@ -342,7 +342,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		LOGDEB("The {} model:"_format(m.name));
 		for (size_t i = 0; i < clusters.size(); i++)
 		{
-			const double x = clusters[i].getCentroid()[0] / clusters.back().getCentroid()[0];
+			const double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
 			const double y = m(x);
 			LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
 		}
@@ -352,15 +352,15 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	// Set masks
 	for (auto &mask : masks)
 		mask = cat::complete_mask;
-	for (size_t c = clusters.size() - 1;  c < clusters.size(); c--)
+	for (size_t c = 0;  c < clusters.size(); c++)
 	{
-		const double x = clusters[c].getCentroid()[0] / clusters.back().getCentroid()[0];
+		const double x = clusters[c].getCentroid()[0] / clusters.front().getCentroid()[0];
 		const uint32_t ways = std::round(model(x));
 		masks[c] = (complete_mask >> (max_num_ways - ways));
 	}
 
 	LOGDEB("Classes Of Service:");
-	for (size_t c = masks.size() - 1; c < masks.size(); c--)
+	for (size_t c = 0; c < masks.size(); c++)
 	{
 		std::string task_ids;
 		if (c < clusters.size())
