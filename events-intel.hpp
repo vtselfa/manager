@@ -136,29 +136,31 @@ class PerfCountMon
 		pause();
 
 		// Process stats
+		auto event = std::vector<uint64_t>(MAX_EVENTS, -1U);
 		for (const auto &core : cores)
 		{
 			if (!m->isCoreOnline(core))
 				throw std::runtime_error("Core " + std::to_string(core) + " is not online");
 
-			Stats stats =
-			{
-				.us               = duration,
-				.instructions     = getInstructionsRetired(cb[core], ca[core]),
-				.cycles           = getCycles(cb[core], ca[core]),
-				.invariant_cycles = getInvariantTSC(cb[core], ca[core]),
-				.ipc              = getIPC(cb[core], ca[core]),
-				.ipnc             = getExecUsage(cb[core], ca[core]),
-				.rel_freq         = getRelativeFrequency(cb[core], ca[core]),
-				.act_rel_freq     = getActiveRelativeFrequency(cb[core], ca[core]),
-				.l3_kbytes_occ    = getL3CacheOccupancy(ca[core]),
-				.mc_gbytes_rd     = getBytesReadFromMC(sb, sa) / double(1e9),
-				.mc_gbytes_wt     = getBytesWrittenToMC(sb, sa) / double(1e9),
-				.proc_energy      = getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
-				.dram_energy      = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
-			};
 			for (int i = 0; i < MAX_EVENTS; ++i)
-				stats.event[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
+				event[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
+			Stats stats = Stats
+			{
+				duration,
+				getInstructionsRetired(cb[core], ca[core]),
+				getCycles(cb[core], ca[core]),
+				getInvariantTSC(cb[core], ca[core]),
+				getIPC(cb[core], ca[core]),
+				getExecUsage(cb[core], ca[core]),
+				getRelativeFrequency(cb[core], ca[core]),
+				getActiveRelativeFrequency(cb[core], ca[core]),
+				getL3CacheOccupancy(ca[core]),
+				getBytesReadFromMC(sb, sa) / double(1e9),
+				getBytesWrittenToMC(sb, sa) / double(1e9),
+				getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
+				getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
+				event,
+			};
 
 			results.push_back(stats);
 		}
