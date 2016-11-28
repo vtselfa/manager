@@ -124,8 +124,20 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 {
 	public:
 
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every) :
-			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos) {}
+	enum class Model {linear, quadratic, exponential};
+
+	const Model model;
+
+	static Model string_to_model(const std::string &model)
+	{
+		if (model == "linear") return Model::linear;
+		if (model == "quadratic") return Model::quadratic;
+		if (model == "exponential") return Model::exponential;
+		throw std::runtime_error("Unknown model '" + model + "' for the Slowfirst Clustered Optimally and Adjusted CAT policy");
+	}
+
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every, Model model) :
+			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos), model(model) {}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 

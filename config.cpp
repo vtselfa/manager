@@ -73,15 +73,16 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	else if (kind == "sfcoa")
 	{
 		// Check that required fields exist
-		for (string field : {"every"})
+		for (string field : {"every", "model"})
 			if (!policy[field])
 				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
 
 		// Read fields
 		uint64_t every = policy["every"].as<uint64_t>();
+		auto model = cat::policy::SfCOA::string_to_model(policy["model"].as<string>());
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SlowfirstClusteredOptimallyAdjusted>(every);
+		return std::make_shared<cat::policy::SfCOA>(every, model);
 	}
 
 	else

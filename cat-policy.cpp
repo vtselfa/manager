@@ -349,12 +349,30 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	LOGDEB(quadratic);
 	LOGDEB(exponential);
 
+	const auto *selected_model = &exponential;
+	if (model == Model::linear)
+	{
+		LOGDEB("Use the LINEAR model");
+		selected_model = &linear;
+	}
+	else if (model == Model::quadratic)
+	{
+		LOGDEB("Use the QUADRATIC model");
+		selected_model = &quadratic;
+	}
+	else if (model == Model::exponential)
+	{
+		LOGDEB("Use the EXPONENTIAL model");
+		selected_model = &exponential;
+	}
+	else throw std::runtime_error("Unknown model");
+
 	for (auto &mask : masks)
 		mask = cat::complete_mask;
 	for (size_t i = 0;  i < clusters.size(); i++)
 	{
 		size_t cos = masks.size() - i - 1;
-		uint32_t ways = exponential[i];
+		uint32_t ways = (*selected_model)[i];
 		masks[cos] = (complete_mask >> (num_ways - ways));
 	}
 
