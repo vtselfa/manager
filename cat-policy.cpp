@@ -365,12 +365,12 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		std::string task_ids;
 		if (c < clusters.size())
 		{
+			size_t i = 0;
 			for (const auto &item : clusters[c].getPoints())
-				task_ids += std::to_string(item.first) + ", ";
-			if (clusters[c].getPoints().size() >= 2)
 			{
-				task_ids.pop_back();
-				task_ids.pop_back(); // Remove last coma and space
+				task_ids += std::to_string(item.first);
+				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
+				i++;
 			}
 		}
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", c, masks[c], __builtin_popcount(masks[c]), task_ids));
