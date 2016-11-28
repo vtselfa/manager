@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <vector>
 #include <cassert>
 
@@ -12,8 +13,8 @@ namespace cat
 
 
 const uint32_t min_num_ways = 2;
-const uint32_t complete_mask = 0xfffff;
-const uint32_t num_ways = 20;
+const uint32_t max_num_ways = 20;
+const uint32_t complete_mask = ~(-1U << max_num_ways);
 const uint32_t num_cos = 4;
 
 
@@ -124,20 +125,24 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 {
 	public:
 
-	enum class Model {linear, quadratic, exponential};
-
-	const Model model;
-
-	static Model string_to_model(const std::string &model)
+	class Model
 	{
-		if (model == "linear") return Model::linear;
-		if (model == "quadratic") return Model::quadratic;
-		if (model == "exponential") return Model::exponential;
-		throw std::runtime_error("Unknown model '" + model + "' for the Slowfirst Clustered Optimally and Adjusted CAT policy");
-	}
+		std::unordered_map <std::string, std::function<double(double)>> models;
+		std::function<double(double)> model;
 
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every, Model model) :
-			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos), model(model) {}
+		public:
+
+		const std::string name;
+
+		Model(const std::string &name);
+
+		double operator() (double x) const { return model(x); }
+	};
+
+	Model model;
+
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every, std::string model_str) :
+			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos), model{model_str} {}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 

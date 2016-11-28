@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <tuple>
@@ -191,16 +190,16 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 	LOGDEB(exponential);
 
 	LOGDEB("Teoretical ways:");
-	for (double &x : linear) x = x / ltot * num_ways;
-	for (double &x : quadratic) x = x / qtot * num_ways;
-	for (double &x : exponential) x = x / etot * num_ways;
+	for (double &x : linear) x = x / ltot * max_num_ways;
+	for (double &x : quadratic) x = x / qtot * max_num_ways;
+	for (double &x : exponential) x = x / etot * max_num_ways;
 	LOGDEB(linear);
 	LOGDEB(quadratic);
 	LOGDEB(exponential);
 
 	for (auto v : {&linear, &quadratic, &exponential})
 	{
-		double p = num_ways;
+		double p = max_num_ways;
 		for (size_t i = 0; i < v->size(); i++)
 		{
 			auto &x = (*v)[i];
@@ -209,7 +208,7 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 		}
 		for (size_t i = v->size() - 1; i > 0; i--)
 			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), cat::min_num_ways);
-		(*v)[0] = num_ways;
+		(*v)[0] = max_num_ways;
 	}
 
 	LOGDEB("Effective ways:");
@@ -221,7 +220,7 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 	{
 		size_t cos = masks.size() - i - 1;
 		uint32_t ways = exponential[i];
-		masks[cos] = (complete_mask >> (num_ways - ways));
+		masks[cos] = (complete_mask >> (max_num_ways - ways));
 	}
 
 	LOGDEB("Classes Of Service:");
@@ -229,6 +228,48 @@ void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vec
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}}}}}", cos, masks[cos], __builtin_popcount(masks[cos])));
 
 	set_masks(masks);
+}
+
+
+// We want to slit an area of size max_num_ways in clusters.size() partitions.
+// This partitions have a minimum size of min_num_ways ans a maximum size of max_num_ways.
+// We will use 3 different models: a linear, a quadratic, and an exponential model.
+// Therefore we will have 3 different functions (fl, fq fe), defined for the intervals [0, al], [0, aq], and [0, ae].
+// Each one fulfills fn(0) == min_num_ways and fn(an) == max_num_ways and grows linearli, quadratically and exponentially, respectively.
+SfCOA::Model::Model(const std::string &name) : name(name)
+{
+	models =
+	{
+		{ "linear", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = max_num_ways - min_num_ways;
+				x *= a; // Scale X for the interval [0, a]
+				return x + min_num_ways;
+			}
+		},
+		{ "quadratic", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = std::sqrt(max_num_ways - min_num_ways);
+				x *= a; // Scale X for the interval [0, a]
+				return std::pow(x, 2) + min_num_ways;
+			}
+		},
+		{ "exponential", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = std::log(max_num_ways - min_num_ways + 1);
+				x *= a; // Scale X for the interval [0, a]
+				return std::exp(x) + min_num_ways - 1;
+			}
+		},
+	};
+
+	if (models.count(name) == 0)
+		throw std::runtime_error("Unwnown model '{}'"_format(name));
+
+	model = models[name];
 }
 
 
@@ -257,11 +298,11 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));
 
-	// Sort clusters in descending order
+	// Sort clusters in ASCENDING order
 	std::sort(begin(clusters), end(clusters),
 			[](const Cluster &c1, const Cluster &c2)
 			{
-				return c1.getCentroid()[0] > c2.getCentroid()[0];
+				return c1.getCentroid()[0] < c2.getCentroid()[0];
 			});
 
 	LOGDEB("Sorted clusters:");
@@ -269,116 +310,46 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		LOGDEB(cluster.to_string());
 
 	// Map clusters to COSs
-	LOGDEB("CPU mappings:");
 	for (size_t c = 0; c < clusters.size(); c++)
 	{
-		size_t cos  = cat::num_cos - c - 1;
 		const auto &cluster = clusters[c];
 
 		// Iterate tasks in cluster and put them in the adequate COS
-		std::string task_ids;
 		size_t i = 0;
 		for(const auto &item : cluster.getPoints())
 		{
 			const size_t index = item.first;
 			const Task &task = tasklist[index];
-			LOGDEB("CPU {} {} to COS {}"_format(task.cpu, task.executable, cos));
-			cat.set_cos_cpu(cos, task.cpu);
-			task_ids += i < cluster.getPoints().size() - 1 ?
-					std::to_string(task.id) + ", ":
-					std::to_string(task.id);
+			cat.set_cos_cpu(c, task.cpu);
 			i++;
 		}
 	}
 
-	auto diffs = std::vector<uint64_t>(clusters.size());
-	auto linear = std::vector<double>(clusters.size());
-	auto quadratic = std::vector<double>(clusters.size());
-	auto exponential = std::vector<double>(clusters.size());
-
-	for (size_t i = 0; i < clusters.size(); i++)
+	// Show all the models
+	for (const auto m : {Model("linear"), Model("quadratic"), Model("exponential")})
 	{
-		diffs[i] = clusters[i].getCentroid()[0];
-		if (i < clusters.size() - 1)
-			diffs[i] -= clusters[i + 1].getCentroid()[0];
-
-		linear[i] = diffs[i] / clusters[0].getCentroid()[0];
-		quadratic[i] = pow(linear[i], 2);
-		exponential[i] = exp(linear[i]);
-	}
-
-	LOGDEB("Intercluster distances:");
-	LOGDEB(diffs);
-
-	double ltot = 0;
-	double qtot = 0;
-	double etot = 0;
-	for (double &x : linear) ltot += x;
-	for (double &x : quadratic) qtot += x;
-	for (double &x : exponential) etot += x;
-
-	LOGDEB("Lineal, quadratic and exponential models:");
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	LOGDEB("Teoretical ways:");
-	for (double &x : linear) x = x / ltot * num_ways;
-	for (double &x : quadratic) x = x / qtot * num_ways;
-	for (double &x : exponential) x = x / etot * num_ways;
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	for (auto v : {&linear, &quadratic, &exponential})
-	{
-		double p = num_ways;
-		for (size_t i = 0; i < v->size(); i++)
+		LOGDEB("The {} model:"_format(m.name));
+		for (size_t i = 0; i < clusters.size(); i++)
 		{
-			auto &x = (*v)[i];
-			x = p - x;
-			p = x;
+			const double x = clusters[i].getCentroid()[0] / clusters.back().getCentroid()[0];
+			const double y = m(x);
+			LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
 		}
-		for (size_t i = v->size() - 1; i > 0; i--)
-			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), cat::min_num_ways);
-		(*v)[0] = num_ways;
 	}
+	LOGDEB("Selected model: {}"_format(model.name));
 
-	LOGDEB("Effective ways:");
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	const auto *selected_model = &exponential;
-	if (model == Model::linear)
-	{
-		LOGDEB("Use the LINEAR model");
-		selected_model = &linear;
-	}
-	else if (model == Model::quadratic)
-	{
-		LOGDEB("Use the QUADRATIC model");
-		selected_model = &quadratic;
-	}
-	else if (model == Model::exponential)
-	{
-		LOGDEB("Use the EXPONENTIAL model");
-		selected_model = &exponential;
-	}
-	else throw std::runtime_error("Unknown model");
-
+	// Set masks
 	for (auto &mask : masks)
 		mask = cat::complete_mask;
-	for (size_t i = 0;  i < clusters.size(); i++)
+	for (size_t c = clusters.size() - 1;  c < clusters.size(); c--)
 	{
-		size_t cos = masks.size() - i - 1;
-		uint32_t ways = (*selected_model)[i];
-		masks[cos] = (complete_mask >> (num_ways - ways));
+		const double x = clusters[c].getCentroid()[0] / clusters.back().getCentroid()[0];
+		const uint32_t ways = std::round(model(x));
+		masks[c] = (complete_mask >> (max_num_ways - ways));
 	}
 
 	LOGDEB("Classes Of Service:");
-	size_t c = 0;
-	for (size_t cos = masks.size() - 1; cos < masks.size(); cos--)
+	for (size_t c = masks.size() - 1; c < masks.size(); c--)
 	{
 		std::string task_ids;
 		if (c < clusters.size())
@@ -391,8 +362,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 				task_ids.pop_back(); // Remove last coma and space
 			}
 		}
-		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}, tasks: [{}]}}}}", cos, masks[cos], __builtin_popcount(masks[cos]), task_ids));
-		c++;
+		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", c, masks[c], __builtin_popcount(masks[c]), task_ids));
 	}
 
 	set_masks(masks);
