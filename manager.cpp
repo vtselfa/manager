@@ -4,6 +4,7 @@
 
 #include <boost/program_options.hpp>
 #include <yaml-cpp/yaml.h>
+#include <fmt/format.h>
 
 #include "cat-policy.hpp"
 #include "common.hpp"
@@ -34,6 +35,7 @@ using std::vector;
 using std::this_thread::sleep_for;
 using std::cout;
 using std::endl;
+using fmt::literals::operator""_format;
 
 
 CAT cat_setup(const vector<Cos> &coslist, bool auto_reset);
@@ -89,6 +91,7 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 	// Loop
 	for (uint32_t interval = 0; interval < max_int; interval++)
 	{
+		LOGDEB("Interval {}"_format(interval));
 		auto cores         = tasks_cores_used(tasklist);
 		auto stats         = vector<Stats>();
 		bool all_completed = true; // Have all the tasks reached their execution limit?
