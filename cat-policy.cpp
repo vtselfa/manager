@@ -93,6 +93,8 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 	if (current_interval % every != 0)
 		return;
 
+	assert(num_clusters > 0);
+
 	auto data = std::vector<Point>();
 	clusters.clear();
 
@@ -293,8 +295,17 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
 	}
 
-	LOGDEB("Max number of clusters: {}"_format(num_clusters));
-	KMeans::clusterize_optimally(num_clusters, data, clusters, 100);
+	if (num_clusters > 0)
+	{
+		LOGDEB("Enforce {} clusters..."_format(num_clusters));
+		KMeans::clusterize(num_clusters, data, clusters, 100);
+	}
+	else
+	{
+		assert(num_clusters == 0);
+		LOGDEB("Try to find the optimal number of clusters...");
+		KMeans::clusterize_optimally(cat::num_cos, data, clusters, 100);
+	}
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));
 

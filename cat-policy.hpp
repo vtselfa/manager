@@ -91,10 +91,7 @@ class SlowfirstClustered: public Slowfirst
 	public:
 
 	SlowfirstClustered(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			Slowfirst(every, masks), num_clusters(num_clusters)
-	{
-		assert(num_clusters > 0);
-	}
+			Slowfirst(every, masks), num_clusters(num_clusters) {}
 
 	virtual ~SlowfirstClustered() = default;
 
@@ -141,8 +138,9 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 
 	Model model;
 
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every, std::string model_str) :
-			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), cat::num_cos), model{model_str} {}
+	// If num_clusters is not 0, then this number of clusters is used, instead of trying to find the optimal one
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, std::string model_str) :
+			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), num_clusters), model(model_str) {}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 

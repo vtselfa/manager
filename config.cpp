@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include <yaml-cpp/yaml.h>
+#include <fmt/format.h>
 
 #include "config.hpp"
 #include "log.hpp"
@@ -8,6 +9,7 @@
 
 using std::vector;
 using std::string;
+using fmt::literals::operator""_format;
 
 
 static std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &config);
@@ -72,17 +74,30 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 
 	else if (kind == "sfcoa")
 	{
+		vector<string> required = {"kind", "every", "model"};
+		vector<string> allowed  = {"num_clusters"};
+		allowed.insert(allowed.end(), required.begin(), required.end());
+
 		// Check that required fields exist
-		for (string field : {"every", "model"})
+		for (string field : required)
 			if (!policy[field])
 				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
 
+		// Check that all the fields present are allowed
+		for (const auto &node : policy)
+		{
+			string field = node.first.Scalar();
+			if (std::find(allowed.begin(), allowed.end(), field) == allowed.end())
+				LOGWAR("Field {} is not allowed in the {} policy"_format(field, kind));
+		}
+
 		// Read fields
 		uint64_t every = policy["every"].as<uint64_t>();
+		uint32_t num_clusters = policy["num_clusters"] ? policy["num_clusters"].as<uint32_t>() : 0;
 		string model = policy["model"].as<string>();
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SfCOA>(every, model);
+		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model);
 	}
 
 	else
