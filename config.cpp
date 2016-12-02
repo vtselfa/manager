@@ -75,7 +75,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	else if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
-		vector<string> allowed  = {"num_clusters"};
+		vector<string> allowed  = {"num_clusters", "alternate_sides"};
 		allowed.insert(allowed.end(), required.begin(), required.end());
 
 		// Check that required fields exist
@@ -95,9 +95,10 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		uint64_t every = policy["every"].as<uint64_t>();
 		uint32_t num_clusters = policy["num_clusters"] ? policy["num_clusters"].as<uint32_t>() : 0;
 		string model = policy["model"].as<string>();
+		bool alternate_sides = policy["alternate_sides"] ? policy["alternate_sides"].as<bool>() : false;
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model);
+		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides);
 	}
 
 	else

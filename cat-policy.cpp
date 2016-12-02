@@ -242,6 +242,12 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 {
 	models =
 	{
+		{ "none", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				throw std::runtime_error("The 'none' model is not suposed to be called");
+			}
+		},
 		{ "linear", [](double x) -> double
 			{
 				assert(x >= 0 && x <= 1);
@@ -349,14 +355,23 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	}
 	LOGDEB("Selected model: {}"_format(model.name));
 
-	// Set masks
-	for (auto &mask : masks)
-		mask = cat::complete_mask;
-	for (size_t c = 0;  c < clusters.size(); c++)
+	// Get current CAT masks
+	masks.resize(cat.get_max_num_cos());
+	for (size_t cos = 0; cos < masks.size(); cos++)
+		masks[cos] = cat.get_cos_mask(cos);
+
+	// Compute new masks
+	if (model.name != "none")
 	{
-		const double x = clusters[c].getCentroid()[0] / clusters.front().getCentroid()[0];
-		const uint32_t ways = std::round(model(x));
-		masks[c] = (complete_mask >> (max_num_ways - ways));
+		for (size_t c = 0;  c < clusters.size(); c++)
+		{
+			const double x = clusters[c].getCentroid()[0] / clusters.front().getCentroid()[0];
+			const uint32_t ways = std::round(model(x));
+			if (alternate_sides && (c % 2) == 1)
+				masks[c] = (complete_mask << (max_num_ways - ways)) & complete_mask; // The mask starts from the left
+			else
+				masks[c] = (complete_mask >> (max_num_ways - ways)); // The mask starts from the right
+		}
 	}
 
 	LOGDEB("Classes Of Service:");
@@ -376,7 +391,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", c, masks[c], __builtin_popcount(masks[c]), task_ids));
 	}
 
-	set_masks(masks);
+	if (model.name != "none")
+		set_masks(masks);
 }
 
 
