@@ -137,10 +137,9 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 		// Iterate tasks in cluster and put them in the adequate COS
 		std::string task_ids;
 		size_t i = 0;
-		for(const auto &item : cluster.getPoints())
+		for(const auto &p : cluster.getPoints())
 		{
-			const size_t index = item.first;
-			const Task &task = tasklist[index];
+			const Task &task = tasklist[p->id];
 			cat.set_cos_cpu(cos, task.cpu);
 			task_ids += i < cluster.getPoints().size() - 1 ?
 					std::to_string(task.id) + ", ":
@@ -333,10 +332,9 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 		// Iterate tasks in cluster and put them in the adequate COS
 		size_t i = 0;
-		for(const auto &item : cluster.getPoints())
+		for(const auto &p : cluster.getPoints())
 		{
-			const size_t index = item.first;
-			const Task &task = tasklist[index];
+			const Task &task = tasklist[p->id];
 			cat.set_cos_cpu(c, task.cpu);
 			i++;
 		}
@@ -381,9 +379,9 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		if (c < clusters.size())
 		{
 			size_t i = 0;
-			for (const auto &item : clusters[c].getPoints())
+			for (const auto &p : clusters[c].getPoints())
 			{
-				task_ids += std::to_string(item.first);
+				task_ids += std::to_string(p->id);
 				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
 				i++;
 			}

@@ -1,8 +1,9 @@
 #pragma once
 
-#include <functional>
-#include <vector>
 #include <cassert>
+#include <functional>
+#include <unordered_map>
+#include <vector>
 
 #include "cat-intel.hpp"
 #include "kmeans.hpp"

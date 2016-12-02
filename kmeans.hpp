@@ -1,18 +1,28 @@
 #pragma once
 
-#include <unordered_map>
+#include <cstddef>
+#include <set>
 #include <vector>
+#include <stdexcept>
 
 
 class Point
 {
+	private:
+
+		Point();
+
 	public:
 
 	const size_t id;
 	const std::vector<double> values;
 
 	Point(size_t id, const std::vector<double>& values) :
-			id(id), values(values) {}
+			id(id), values(values)
+	{
+		if (values.size() == 0)
+			throw std::runtime_error("A point must have at least one value");
+	}
 
 	// Euclidian distance between two points
 	double distance(const Point &o) const;
@@ -25,8 +35,8 @@ typedef
 	<
 		std::pair
 		<
-			size_t,
-			size_t
+			const Point *,
+			const Point *
 		>,
 		double
 	> P2PDist;
@@ -37,21 +47,26 @@ class Cluster
 	private:
 
 	std::vector<double> centroid;
-	std::unordered_map<size_t, const Point *> points;
+	std::set<const Point *> points;
 
 	public:
 
 	size_t id;
 
-	Cluster(size_t id, const std::vector<double> &centroid) : centroid(centroid), id(id) {}
+	Cluster(size_t id, const std::vector<double> &centroid) : centroid(centroid), id(id)
+	{
+		if (centroid.size() == 0)
+			throw std::runtime_error("A cluster cannot be created with an empty centroid");
+	}
 
-	void addPoint(const Point *point);
-	void removePoint(size_t id_point);
+	void addPoint(const Point *p);
+	void removePoint(const Point *p);
 	void updateMeans();
 	const std::vector<double>& getCentroid() const { return centroid; }
 	const auto& getPoints() const { return points; }
 	std::string to_string() const;
 
+	bool disjoint(const Cluster &c) const;
 
 	// Cluster to point distances
 
@@ -94,11 +109,11 @@ class Cluster
 
 class KMeans
 {
-	private:
+	protected:
 
 	// Return the index of the nearest cluster
 	static
-	int nearestCluster(size_t k, const std::vector<Cluster> &clusters, const Point &point);
+	int nearestCluster(const std::vector<Cluster> &clusters, const Point &point);
 
 	// Put an initial Point in them
 	static

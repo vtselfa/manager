@@ -21,15 +21,48 @@ double Point::distance(const Point &o) const
 }
 
 
-void Cluster::addPoint(const Point *point)
+void Cluster::addPoint(const Point *p)
 {
-	points[point->id] = point;
+	if (p== NULL)
+		throw std::runtime_error("Cannot add a NULL Point pointer to cluster");
+	if (points.count(p))
+		throw std::runtime_error("The point with id {} alredy exists in the cluster"_format(p->id));
+	if (p->values.size() != centroid.size())
+		throw std::runtime_error("The point with id {} is {}-dimensional, while the cluster is {}-dimensional"_format(p->id, p->values.size(), centroid.size()));
+	points.insert(p);
 }
 
 
-void Cluster::removePoint(size_t id_point)
+void Cluster::removePoint(const Point *p)
 {
-	points.erase(id_point);
+	if (p == NULL)
+		throw std::runtime_error("Cannot remove a NULL Point pointer from the cluster");
+	if (points.count(p) == 0)
+		throw std::runtime_error("The point {:#x} is not in the cluster"_format((void *) p));
+	points.erase(p);
+}
+
+
+bool Cluster::disjoint(const Cluster &c) const
+{
+	const Cluster *cs;
+	const Cluster *cb;
+
+	if (c.getPoints().size() > points.size())
+	{
+		cb = &c;
+		cs = this;
+	}
+	else
+	{
+		cs = &c;
+		cb = this;
+	}
+
+	for (const auto &p : cs->getPoints())
+		if (cb->getPoints().count(p) != 0)
+			return false;
+	return true;
 }
 
 
@@ -46,14 +79,15 @@ double Cluster::centroid_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 {
-	assert(points.size() > 0);
+	if (points.size() == 0)
+		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
 	auto result = std::vector<P2PDist>();
-	for(const auto &item : points)
+	for(const auto &q : points)
 	{
 		// Ignore p if it's in the cluster
-		if (item.first == p.id)
+		if (&p == q)
 			continue;
-		P2PDist p2pdist = std::make_pair(std::make_pair(p.id, item.first), p.distance(*item.second));
+		P2PDist p2pdist = std::make_pair(std::make_pair(&p, q), p.distance(*q));
 		result.push_back(p2pdist);
 	}
 	return result;
@@ -62,21 +96,21 @@ std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance() const
 {
-	assert(points.size() > 0);
-	auto ids = std::vector<size_t>();
-	auto result = std::vector<P2PDist>();
-	for(const auto &item : points)
-		ids.push_back(item.first);
+	if (points.size() == 0)
+		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
 
-	for (size_t i = 0; i < ids.size(); i++)
+	auto result = std::vector<P2PDist>();
+	for (auto it1 = points.begin(); it1 != points.end(); it1++)
 	{
-		const Point &pi = *points.find(i)->second;
-		for (size_t j = i + 1; j < ids.size(); j++)
+		const Point *pi = *it1;
+		auto it2 = it1;
+		it2++;
+		for (; it2 != points.end(); it2++)
 		{
-			const Point &pj = *points.find(j)->second;
+			const Point *pj = *it2;
 			P2PDist p2pdist = std::make_pair(
-					std::make_pair(ids[i], ids[j]),
-					pi.distance(pj));
+					std::make_pair(pi, pj),
+					pi->distance(*pj));
 			result.push_back(p2pdist);
 		}
 
@@ -117,6 +151,38 @@ double Cluster::max_pairwise_distance(const Point &p) const
 }
 
 
+double Cluster::mean_pairwise_distance() const
+{
+	auto distances = pairwise_distance();
+	double sum = 0;
+	for (const auto &p2pdist : distances)
+		sum += p2pdist.second;
+	return sum / distances.size();
+}
+
+
+double Cluster::min_pairwise_distance() const
+{
+	auto distances = pairwise_distance();
+	double min = std::numeric_limits<double>().max();
+	for (const auto &p2pdist : distances)
+		if (p2pdist.second < min)
+			min = p2pdist.second;
+	return min;
+}
+
+
+double Cluster::max_pairwise_distance() const
+{
+	auto distances = pairwise_distance();
+	double max = 0;
+	for (const auto &p2pdist : distances)
+		if (p2pdist.second > max)
+			max = p2pdist.second;
+	return max;
+}
+
+
 double Cluster::centroid_to_centroid_distance(const Cluster &c) const
 {
 	return Point(0, centroid).distance(Point(1, c.getCentroid()));
@@ -126,9 +192,9 @@ double Cluster::centroid_to_centroid_distance(const Cluster &c) const
 double Cluster::farthest_points_distance(const Cluster &c) const
 {
 	double max = 0;
-	for (const auto &item : c.getPoints())
+	for (const auto &p : c.getPoints())
 	{
-		double local_max = max_pairwise_distance(*item.second);
+		double local_max = max_pairwise_distance(*p);
 		if (local_max > max)
 			max = local_max;
 	}
@@ -139,9 +205,14 @@ double Cluster::farthest_points_distance(const Cluster &c) const
 double Cluster::closest_points_distance(const Cluster &c) const
 {
 	double min = std::numeric_limits<double>().max();
-	for (const auto &item : c.getPoints())
+
+	// If the clusters are not disjoint then the minimum distance is 0
+	if (!disjoint(c))
+		return 0;
+
+	for (const auto &p : c.getPoints())
 	{
-		double local_min = min_pairwise_distance(*item.second);
+		double local_min = min_pairwise_distance(*p);
 		if (local_min < min)
 			min = local_min;
 	}
@@ -149,48 +220,25 @@ double Cluster::closest_points_distance(const Cluster &c) const
 }
 
 
-double Cluster::min_pairwise_distance() const
-{
-	double min = std::numeric_limits<double>().max();
-	auto distances = pairwise_distance();
-	for (const auto &p2pdist : distances)
-		if (p2pdist.second < min)
-			min = p2pdist.second;
-	return min;
-}
-
-
-double Cluster::max_pairwise_distance() const
-{
-	double max = 0;
-	auto distances = pairwise_distance();
-	for (const auto &p2pdist : distances)
-		if (p2pdist.second > max)
-			max = p2pdist.second;
-	return max;
-}
-
-
 double Cluster::mean_centroid_distance() const
 {
 	auto center = Point(-1U, this->centroid);
 	double sum = 0;
-	for (const auto &item : points)
-		sum += centroid_distance(*item.second);
+	for (const auto &p : points)
+		sum += centroid_distance(*p);
 	return sum / points.size();
 }
 
 
 void Cluster::updateMeans()
 {
-	if (centroid.size() == 0)
-		return;
+	assert(centroid.size() > 0);
 	for(size_t i = 0; i < centroid.size(); i++)
 	{
 		double sum = 0;
-		for(const auto &item : points)
-			sum += item.second->values[i];
-		centroid[i] = sum / points.size();
+		for(const auto &p : points)
+			sum += p->values[i];
+		centroid[i] = points.size() ? sum / points.size() : NAN;
 	}
 }
 
@@ -206,14 +254,15 @@ std::string Cluster::to_string() const
 }
 
 
-int KMeans::nearestCluster(size_t k, const std::vector<Cluster> &clusters, const Point &point)
+int KMeans::nearestCluster(const std::vector<Cluster> &clusters, const Point &point)
 {
-	assert(clusters.size() > 0);
+	if (clusters.size() == 0)
+		throw std::runtime_error("No clusters provided");
 
 	int cluster = 0;
 	double min_dist = std::numeric_limits<double>::infinity();
 
-	for (size_t i = 0; i < k; i++)
+	for (size_t i = 0; i < clusters.size(); i++)
 	{
 		double dist = clusters[i].centroid_distance(point);
 
@@ -235,15 +284,18 @@ double KMeans::silhouette(const std::vector<Cluster> &clusters)
 	for (size_t k = 0; k < clusters.size(); k++)
 	{
 		double sk = 0; // Silhouette index for the cluster
-		for (const auto &item : clusters[k].getPoints())
+		for (const auto &p : clusters[k].getPoints())
 		{
-			const auto &point = *item.second;
-			double a = clusters[k].mean_pairwise_distance(point);
+			double a = clusters[k].mean_pairwise_distance(*p);
 			double b = std::numeric_limits<double>::max();
+			// The pairwise distance can be NAN is this is the only member of the cluster.
+			// If that is the case we set it to 0.
+			if (std::isnan(a))
+				a = 0;
 			for (size_t k2 = 0; k2 < clusters.size(); k2++)
 			{
 				if (k == k2) continue;
-				b = std::min(b, clusters[k2].mean_pairwise_distance(point));
+				b = std::min(b, clusters[k2].mean_pairwise_distance(*p));
 			}
 			double si = (b - a) / std::max(a, b); // Silhouette index for the point
 			sk += si;
@@ -303,12 +355,12 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 		for(size_t i = 0; i < total_points; i++)
 		{
 			int id_old_cluster = assigned[i];
-			int id_nearest_center = nearestCluster(k, clusters, points[i]);
+			int id_nearest_center = nearestCluster(clusters, points[i]);
 
 			if(id_old_cluster != id_nearest_center)
 			{
 				if(id_old_cluster != -1)
-					clusters[id_old_cluster].removePoint(points[i].id);
+					clusters[id_old_cluster].removePoint(&points[i]);
 
 				assigned[i] = id_nearest_center;
 				clusters[id_nearest_center].addPoint(&points[i]);
