@@ -19,6 +19,11 @@ class CAT
 	void cleanup();
 	void set_cos_mask(uint32_t cos, uint64_t mask, uint32_t socket=0);
 	void set_cos_cpu(uint32_t cos, uint32_t core);
+
+	uint32_t get_cos_of_cpu(uint32_t cpu) const;
+	uint64_t get_cos_mask(uint32_t cos, uint32_t socket=0) const;
+	uint32_t get_max_num_cos() const;
+
 	void reset();
 	bool is_initialized() { return initialized; }
 	void print();

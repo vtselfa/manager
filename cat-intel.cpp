@@ -1,3 +1,4 @@
+#include <cassert>
 #include <stdexcept>
 
 #include "cat-intel.hpp"
@@ -78,6 +79,38 @@ void CAT::set_cos_cpu(uint32_t cos, uint32_t core)
 	int ret = pqos_alloc_assoc_set(core, cos);
 	if (ret != PQOS_RETVAL_OK)
 		throw std::runtime_error("Could not associate core with class of service");
+}
+
+
+uint32_t CAT::get_cos_of_cpu(uint32_t cpu) const
+{
+	uint32_t cos;
+	if (pqos_alloc_assoc_get(cpu, &cos) != PQOS_RETVAL_OK)
+		throw std::runtime_error("Could not get COS for CPU " + std::to_string(cpu));
+	return cos;
+}
+
+
+uint64_t CAT::get_cos_mask(uint32_t cos, uint32_t socket) const
+{
+	struct pqos_l3ca l3ca[PQOS_MAX_L3CA_COS];
+	uint32_t num_cos;
+
+	if (pqos_l3ca_get(socket, PQOS_MAX_L3CA_COS, &num_cos, l3ca) != PQOS_RETVAL_OK)
+		 throw std::runtime_error("Could not get mask for COS" + std::to_string(cos));
+
+	assert(l3ca[cos].class_id == cos);
+
+	return l3ca[cos].u.ways_mask;
+}
+
+
+uint32_t CAT::get_max_num_cos() const
+{
+	uint32_t max_num_cos;
+	if (pqos_l3ca_get_cos_num(p_cap, &max_num_cos) != PQOS_RETVAL_OK)
+		throw std::runtime_error("Could not get the max number of Classes Of Service");
+	return max_num_cos;
 }
 
 
