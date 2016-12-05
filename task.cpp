@@ -1,4 +1,6 @@
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 #include <sched.h>
 #include <signal.h>
@@ -9,6 +11,7 @@
 #include <boost/filesystem.hpp>
 #include <glib.h>
 
+#include "log.hpp"
 #include "task.hpp"
 
 
@@ -251,4 +254,80 @@ void tasks_kill_and_restart(std::vector<Task> &tasklist)
 	for (auto &task : tasklist)
 		if (task.limit_reached)
 			task_kill_and_restart(task);
+}
+
+
+void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep)
+{
+	Stats s;
+	if (sk == StatsKind::interval)
+		s = t.stats_interval;
+	else if (sk == StatsKind::until_compl_summary)
+		s = t.stats_acumulated;
+	else if (sk == StatsKind::total_summary)
+		s = t.stats_total;
+	else
+		LOGFAT("Unknown stats kind");
+
+	out << interval           << sep;
+	out << t.cpu                << sep << std::setfill('0') << std::setw(2);
+	out << t.id << "_" << t.executable << sep;
+
+	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
+		out << (t.max_instr ? (double) t.stats_total.instructions / (double) t.max_instr : 0) << sep;
+
+	out << s.us               << sep;
+	out << s.instructions     << sep;
+	out << s.cycles           << sep;
+	out << s.invariant_cycles << sep;
+	out << s.ipc              << sep;
+	out << s.ipnc             << sep;
+	out << s.rel_freq         << sep;
+	out << s.act_rel_freq     << sep;
+	out << s.l3_kbytes_occ    << sep;
+	out << s.mc_gbytes_rd     << sep;
+	out << s.mc_gbytes_wt     << sep;
+	out << s.proc_energy      << sep;
+	out << s.dram_energy      << sep;
+
+	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	{
+		out << s.event[i];
+		if (i < MAX_EVENTS - 1)
+			out << sep;
+	}
+	out << std::endl;
+}
+
+
+void task_stats_print_headers(StatsKind sk, std::ostream &out, const std::string &sep)
+{
+	out << "interval" << sep;
+	out << "core" << sep;
+	out << "app" << sep;
+
+	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
+		out << "compl" << sep;
+
+	out << "us" << sep;
+	out << "instructions" << sep;
+	out << "cycles" << sep;
+	out << "invariant_cycles" << sep;
+	out << "ipc" << sep;
+	out << "ipnc" << sep;
+	out << "rel_freq" << sep;
+	out << "act_rel_freq" << sep;
+	out << "l3_kbytes_occ" << sep;
+	out << "mc_gbytes_rd" << sep;
+	out << "mc_gbytes_wt" << sep;
+	out << "proc_energy" << sep;
+	out << "dram_energy" << sep;
+
+	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	{
+		out << "ev" << i;
+		if (i < MAX_EVENTS - 1)
+			out << sep;
+	}
+	out << std::endl;
 }

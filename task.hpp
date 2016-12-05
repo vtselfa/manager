@@ -31,7 +31,7 @@ struct Task
 	Stats stats_interval   = Stats(); // Only last interval
 
 	bool limit_reached = false; // Has the instruction limit been reached?
-	bool completed = false;     // Do not print stats
+	uint32_t completed;         // Number of times it has reached the instruction limit
 	bool batch = false;         // Batch tasks do not need to be completed in order to finish the execution
 
 	Task() = delete;
@@ -48,6 +48,14 @@ struct Task
 };
 
 
+enum class StatsKind
+{
+	interval,
+	until_compl_summary,
+	total_summary
+};
+
+
 void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base);
 void task_create_rundir(const Task &task);
 void task_remove_rundir(const Task &task);
@@ -59,3 +67,5 @@ void task_kill(Task &task);
 void task_kill_and_restart(Task &task);
 std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
 void tasks_kill_and_restart(std::vector<Task> &tasklist);
+void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep = ",");
+void task_stats_print_headers(StatsKind sk, std::ostream &out, const std::string &sep = ",");

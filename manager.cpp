@@ -39,7 +39,7 @@ using fmt::literals::operator""_format;
 
 
 CAT cat_setup(const vector<Cos> &coslist, bool auto_reset);
-void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out);
+void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
 void clean(vector<Task> &tasklist, CAT &cat);
 [[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT &cat);
 std::string program_options_to_string(const std::vector<po::option>& raw);
@@ -62,7 +62,15 @@ CAT cat_setup(const vector<Cos> &coslist, bool auto_reset)
 }
 
 
-void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &fin_out)
+void loop(
+		vector<Task> &tasklist,
+		std::shared_ptr<cat::policy::Base> catpol,
+		const vector<string> &events,
+		uint64_t time_int_us,
+		uint32_t max_int,
+		std::ostream &out,
+		std::ostream &ucompl_out,
+		std::ostream &total_out)
 {
 	if (time_int_us <= 0)
 		throw std::runtime_error("Interval time must be positive and greater than 0");
@@ -77,7 +85,7 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 
 	// The PERfCountMon class receives 3 lambdas: une for resuming task, other for waiting, and the last one for pausing the tasks.
 	// Note that each lambda captures variables by reference, specially the waiter,
-	// which captures the time to wait by reference, so when it's adjusted it's not necessary to do anithing.
+	// which captures the time to wait by reference, so when it's adjusted it's not necessary to do anything.
 	auto resume = [&tasklist]()     { tasks_resume(tasklist); };
 	auto wait   = [&adj_delay_us]() { sleep_for(chr::microseconds(adj_delay_us));};
 	auto pause  = [&tasklist]()     { tasks_pause(tasklist); };
@@ -85,11 +93,13 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 	perf.mon_custom_events(events);
 
 	// Print headers
-	stats_print_header(out);
-	stats_final_print_header(fin_out);
+	task_stats_print_headers(StatsKind::interval, out);
+	task_stats_print_headers(StatsKind::until_compl_summary, ucompl_out);
+	task_stats_print_headers(StatsKind::total_summary, total_out);
 
 	// Loop
-	for (uint32_t interval = 0; interval < max_int; interval++)
+	uint32_t interval;
+	for (interval = 0; interval < max_int; interval++)
 	{
 		LOGINF("Interval {}"_format(interval));
 		auto cores         = tasks_cores_used(tasklist);
@@ -125,28 +135,20 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 			if (task.stats_acumulated.instructions >= task.max_instr)
 			{
 				task.limit_reached = true;
+				task.completed++;
 
 				// It's the first time it reaches the limit
-				if (!task.completed)
-				{
-					task.completed = true;
-
-					// Print interval stats for the last time
-					stats_print(task.stats_interval, out, task.cpu, task.id, task.executable, interval);
-
-					// Print acumulated stats
-					stats_print(task.stats_acumulated, fin_out, task.cpu, task.id, task.executable);
-				}
+				// Print acumulated stats
+				if (task.completed == 1)
+					task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
 			}
 
-			// This task has never reached any limits
-			if (!task.completed)
-			{
-				// Batch tasks do not need to be completed
-				if (!task.batch)
-					all_completed = false;
-				stats_print(task.stats_interval, out, task.cpu, task.id, task.executable, interval);
-			}
+			// If any non-batch task is not completed then we don't finish
+			if (!task.completed && !task.batch)
+				all_completed = false;
+
+			// Print interval stats
+			task_stats_print(task, StatsKind::interval, interval, out);
 		}
 
 		// All the tasks have reached their limit -> finish execution
@@ -167,11 +169,12 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 		adj_delay_us += ki * integral;
 	}
 
-	// Print acumulated stats for non completed tasks
+	// Print acumulated stats for non completed tasks and total stats for all the tasks
 	for (const auto &task : tasklist)
 	{
 		if (!task.completed)
-			stats_print(task.stats_acumulated, fin_out, task.cpu, task.id, task.executable);
+			task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
+		task_stats_print(task, StatsKind::total_summary, interval, total_out);
 	}
 
 	// For some reason killing a stopped process returns EPERM... this solves it
@@ -259,6 +262,37 @@ std::string program_options_to_string(const std::vector<po::option>& raw)
 }
 
 
+void open_output_streams(
+		const string &int_str,
+		const string &ucompl_str,
+		const string &total_str,
+		std::shared_ptr<std::ostream> &int_out,
+		std::shared_ptr<std::ostream> &ucompl_out,
+		std::shared_ptr<std::ostream> &total_out)
+{
+	// Open output file if needed; if not, use cout
+	if (int_str == "")
+	{
+		int_out.reset(new std::ofstream());
+		int_out->rdbuf(cout.rdbuf());
+	}
+	else
+		int_out.reset(new std::ofstream(int_str));
+
+	// Output file for summary stats until completion
+	if (ucompl_str == "")
+		ucompl_out.reset(new std::stringstream());
+	else
+		ucompl_out.reset(new std::ofstream(ucompl_str));
+
+	// Output file for summary stats for all the time the applications have been executed, not only before they are completed
+	if (total_str == "")
+		total_out.reset(new std::stringstream());
+	else
+		total_out.reset(new std::ofstream(total_str));
+}
+
+
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
@@ -276,8 +310,9 @@ int main(int argc, char *argv[])
 	desc.add_options()
 		("help,h", "print usage message")
 		("config,c", po::value<string>()->required(), "pathname for yaml config file")
-		("output,o", po::value<string>(), "pathname for output")
-		("fin-output", po::value<string>(), "pathname for output values when tasks are completed")
+		("output,o", po::value<string>()->default_value(""), "pathname for output")
+		("fin-output", po::value<string>()->default_value(""), "pathname for output values when tasks are completed")
+		("total-output", po::value<string>()->default_value(""), "pathname for total output values")
 		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
 		("id", po::value<string>()->default_value(random_string(5)), "identifier for the experiment")
 		("ti", po::value<double>()->default_value(1), "time-interval, duration in seconds of the time interval to sample performance counters.")
@@ -323,24 +358,22 @@ int main(int argc, char *argv[])
 			general_log::severity_level(vm["flog-min"].as<string>()));
 
 	// Log the program options
+	string cmdline;
+	for (int i = 0; i < argc; i++)
+		cmdline += " {}"_format(argv[i]);
+	LOGINF("Program cmdline:{}"_format(cmdline));
 	LOGINF("Program options:\n" + options);
 
 	// Set CPU affinity for not interfering with the executed workloads
 	if (vm.count("cpu-affinity"))
 		set_cpu_affinity(vm["cpu-affinity"].as<vector<uint32_t>>());
 
-	// Open output file if needed; if not, use cout
-	auto file1 = std::ofstream();
-	if (vm.count("output"))
-		file1 = open_ofstream(vm["output"].as<string>());
-	std::ostream &out = file1.is_open() ? file1 : cout;
+	// Open output streams
 
-	// Output file for final output
-	auto file2 = std::ofstream();
-	auto ss_aux = std::stringstream();
-	if (vm.count("fin-output"))
-		file2 = open_ofstream(vm["fin-output"].as<string>());
-	std::ostream &fin_out = file2.is_open() ? file2 : dynamic_cast<std::ostream &>(ss_aux);
+	auto int_out    = std::shared_ptr<std::ostream>();
+	auto ucompl_out = std::shared_ptr<std::ostream>();
+	auto total_out  = std::shared_ptr<std::ostream>();
+	open_output_streams(vm["output"].as<string>(), vm["fin-output"].as<string>(), vm["total-output"].as<string>(), int_out, ucompl_out, total_out);
 
 	// Read config
 	auto tasklist = vector<Task>();
@@ -391,12 +424,21 @@ int main(int argc, char *argv[])
 
 		// Start doing things
 		LOGINF("Start main loop");
-		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), out, fin_out);
+		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.
 		if (!vm.count("fin-output"))
-			cout << dynamic_cast<std::stringstream &>(fin_out).str();
+		{
+			auto o = ucompl_out.get();
+			cout << dynamic_cast<std::stringstream *>(o)->str();
+		}
+		// Same...
+		if (!vm.count("total-output"))
+		{
+			auto o = total_out.get();
+			cout << dynamic_cast<std::stringstream *>(o)->str();
+		}
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, catpol->get_cat());
