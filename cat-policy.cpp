@@ -271,6 +271,38 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 				return std::exp(x) + min_num_ways - 1;
 			}
 		},
+		{ "expquad", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = std::sqrt(std::log(max_num_ways - min_num_ways + 1));
+				x *= a; // Scale X for the interval [0, a]
+				return std::exp(pow(x, 2)) + min_num_ways - 1;
+			}
+		},
+		{ "log", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = 14.849;
+				x *= a; // Scale X for the interval [0, a]
+				return 15 * std::log(x + 1) + min_num_ways;
+			}
+		},
+		{ "linlog", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = 15.222;
+				x *= a; // Scale X for the interval [0, a]
+				return x * std::log(x) + 2;
+			}
+		},
+		{ "camel", [](double x) -> double
+			{
+				assert(x >= 0 && x <= 1);
+				const double a = 21.522;
+				x *= a; // Scale X for the interval [0, a]
+				return (0.9 * x - 25) * std::exp(0.1 * x) + 0.005 * std::pow(x + 40, 2) + x + 24;
+			}
+		},
 	};
 
 	if (models.count(name) == 0)

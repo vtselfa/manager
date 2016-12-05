@@ -16,7 +16,7 @@ namespace cat
 const uint32_t min_num_ways = 2;
 const uint32_t max_num_ways = 20;
 const uint32_t complete_mask = ~(-1U << max_num_ways);
-const uint32_t num_cos = 4;
+const uint32_t num_cos = 8;
 
 
 namespace policy

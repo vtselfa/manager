@@ -10,7 +10,7 @@ class Point
 {
 	private:
 
-		Point();
+	Point();
 
 	public:
 
@@ -57,6 +57,15 @@ class Cluster
 	{
 		if (centroid.size() == 0)
 			throw std::runtime_error("A cluster cannot be created with an empty centroid");
+	}
+
+	void set_centroid(const std::vector<double> &cent)
+	{
+		if (cent.size() == 0)
+			throw std::runtime_error("A cluster centroid connot be empty");
+		if (cent.size() != centroid.size() && points.size() != 0)
+			throw std::runtime_error("The size of the centroid of a cluster cannot be changed if the cluster is not empty");
+		this->centroid = cent;
 	}
 
 	void addPoint(const Point *p);
@@ -118,6 +127,9 @@ class KMeans
 	// Put an initial Point in them
 	static
 	void initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters);
+
+	static
+	void reinitCluster(const std::vector<Point> &points, Cluster &c);
 
 	// Computes the Silhouette index
 	static
