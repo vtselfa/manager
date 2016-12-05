@@ -76,11 +76,13 @@ namespace general_log
 			keywords::format = format
 		);
 
+		fsink->locked_backend()->auto_flush(true);
 		fsink->set_filter
 		(
 			severity >= flog_min
 		);
 
+		csink->locked_backend()->auto_flush(true);
 		csink->set_filter
 		(
 			severity >= clog_min

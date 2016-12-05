@@ -91,7 +91,7 @@ void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, con
 	// Loop
 	for (uint32_t interval = 0; interval < max_int; interval++)
 	{
-		LOGDEB("Interval {}"_format(interval));
+		LOGINF("Interval {}"_format(interval));
 		auto cores         = tasks_cores_used(tasklist);
 		auto stats         = vector<Stats>();
 		bool all_completed = true; // Have all the tasks reached their execution limit?
