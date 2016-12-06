@@ -135,6 +135,9 @@ class KMeans
 	static
 	double silhouette(const std::vector<Cluster> &clusters);
 
+	static
+	double dunn_index(const std::vector<Cluster> &clusters);
+
 	public:
 
 	// Clusterize

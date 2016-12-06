@@ -309,6 +309,32 @@ double KMeans::silhouette(const std::vector<Cluster> &clusters)
 }
 
 
+double KMeans::dunn_index(const std::vector<Cluster> &clusters)
+{
+	double min_inter = std::numeric_limits<double>().max();
+	for (size_t i = 0; i < clusters.size(); i++)
+	{
+		const auto &ci = clusters[i];
+		for (size_t j = i + 1; j < clusters.size(); j++)
+		{
+			const auto &cj = clusters[j];
+			double dist = ci.closest_points_distance(cj);
+			if (dist < min_inter)
+				min_inter = dist;
+		}
+	}
+	double max_intra = 0;
+	for (size_t i = 0; i < clusters.size(); i++)
+	{
+		double dist = clusters[i].max_pairwise_distance();
+		if (dist > max_intra)
+			max_intra = dist;
+	}
+	return -min_inter / max_intra; // Dunn index is the lower, the better, but we want the opposite
+
+}
+
+
 void KMeans::initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters)
 {
 	clusters.clear();
@@ -399,10 +425,10 @@ size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &poin
 	std::vector<Cluster> best_clusters;
 	size_t best_iter = 0;
 
-	for (size_t k = 2; k <= max_k; k++)
+	for (size_t k = 2; k <= std::min(max_k, points.size()-1); k++)
 	{
 		size_t iter = clusterize(k, points, clusters, max_iter);
-		double result = silhouette(clusters);
+		double result = dunn_index(clusters);
 		LOGDEB("k {} has a silhouette of {}"_format(k, result));
 		if (result > best_result)
 		{
