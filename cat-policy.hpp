@@ -16,7 +16,6 @@ namespace cat
 const uint32_t min_num_ways = 2;
 const uint32_t max_num_ways = 20;
 const uint32_t complete_mask = ~(-1U << max_num_ways);
-const uint32_t num_cos = 8;
 
 
 namespace policy
@@ -142,7 +141,7 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 
 	// If num_clusters is not 0, then this number of clusters is used, instead of trying to find the optimal one
 	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, std::string model_str, bool alternate_sides) :
-			SlowfirstClustered(every, std::vector<uint64_t>(cat::num_cos, cat::complete_mask), num_clusters), model(model_str), alternate_sides(alternate_sides) {}
+			SlowfirstClustered(every, {}, num_clusters), model(model_str), alternate_sides(alternate_sides) {}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 

@@ -341,7 +341,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	{
 		assert(num_clusters == 0);
 		LOGDEB("Try to find the optimal number of clusters...");
-		KMeans::clusterize_optimally(cat::num_cos, data, clusters, 100);
+		KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100);
 	}
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));
@@ -393,7 +393,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	// Compute new masks
 	if (model.name != "none")
 	{
-		for (size_t c = 0;  c < clusters.size(); c++)
+		size_t c;
+		for (c = 0;  c < clusters.size(); c++)
 		{
 			const double x = clusters[c].getCentroid()[0] / clusters.front().getCentroid()[0];
 			const uint32_t ways = std::round(model(x));
@@ -402,6 +403,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			else
 				masks[c] = (complete_mask >> (max_num_ways - ways)); // The mask starts from the right
 		}
+		for (;  c < masks.size(); c++)
+			masks[c] = complete_mask;
 	}
 
 	LOGDEB("Classes Of Service:");
