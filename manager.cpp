@@ -310,6 +310,7 @@ int main(int argc, char *argv[])
 	desc.add_options()
 		("help,h", "print usage message")
 		("config,c", po::value<string>()->required(), "pathname for yaml config file")
+		("config-override", po::value<string>()->default_value(""), "yaml string for overriding parts of the config")
 		("output,o", po::value<string>()->default_value(""), "pathname for output")
 		("fin-output", po::value<string>()->default_value(""), "pathname for output values when tasks are completed")
 		("total-output", po::value<string>()->default_value(""), "pathname for total output values")
@@ -384,7 +385,8 @@ int main(int argc, char *argv[])
 	{
 		// Read config and set tasklist and coslist
 		config_file = vm["config"].as<string>();
-		config_read(config_file, tasklist, coslist, catpol);
+		string config_override = vm["config-override"].as<string>();
+		config_read(config_file, config_override, tasklist, coslist, catpol);
 		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
 	catch(const YAML::ParserException &e)

@@ -15,6 +15,7 @@ using fmt::literals::operator""_format;
 static std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &config);
 static vector<Cos> config_read_cos(const YAML::Node &config);
 static vector<Task> config_read_tasks(const YAML::Node &config);
+static YAML::Node merge(YAML::Node user, YAML::Node def);
 
 
 static
@@ -186,7 +187,27 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 }
 
 
-void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol)
+static
+YAML::Node merge(YAML::Node user, YAML::Node def)
+{
+	if (user.Type() == YAML::NodeType::Map && def.Type() == YAML::NodeType::Map)
+	{
+		for (auto it = def.begin(); it != def.end(); ++it)
+		{
+			std::string key = it->first.Scalar();
+			YAML::Node value = it->second;
+
+			if (!user[key])
+				user[key] = value;
+			else
+				user[key] = merge(user[key], value);
+		}
+	}
+    return user;
+}
+
+
+void config_read(const string &path, const string &overlay, vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol)
 {
 	// The message outputed by YAML is not clear enough, so we test first
 	std::ifstream f(path);
@@ -194,6 +215,12 @@ void config_read(const string &path, vector<Task> &tasklist, vector<Cos> &coslis
 		throw std::runtime_error("File doesn't exist or is not readable");
 
 	YAML::Node config = YAML::LoadFile(path);
+
+	if (overlay != "")
+	{
+		YAML::Node over = YAML::Load(overlay);
+		config = merge(over, config);
+	}
 
 	// Read initial CAT config
 	if (config["cos"])
