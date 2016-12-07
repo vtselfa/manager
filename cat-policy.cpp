@@ -2,6 +2,11 @@
 #include <iostream>
 #include <tuple>
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/max.hpp>
+#include <boost/accumulators/statistics/mean.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/variance.hpp>
 #include <cxx-prettyprint/prettyprint.hpp>
 #include <fmt/format.h>
 
@@ -314,11 +319,14 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 
 void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
 {
+	namespace acc = boost::accumulators;
+
 	// Apply the policy only when the amount of intervals specified has passed
 	if (current_interval % every != 0)
 		return;
 
 	auto data = std::vector<Point>();
+	acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance, acc::tag::max>> accum;
 
 	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
 
@@ -328,8 +336,21 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	{
 		const Task &task = tasklist[t];
 		uint64_t l2_miss_stalls = task.stats_total.event[2];
+		accum(l2_miss_stalls);
 		data.push_back(Point(task.id, {(double) l2_miss_stalls}));
 		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
+	}
+
+	if (min_stall_ratio > 0)
+	{
+		// Ratio of cycles stalled and cycles the execution has been running for the most stalled application
+		const double stall_ratio = acc::max(accum) / tasklist[0].stats_total.invariant_cycles;
+		if (stall_ratio < min_stall_ratio)
+		{
+			LOGDEB("Better to do nothing, since the processor is only stalled {}% of the time"_format(stall_ratio * 100));
+			cat.reset();
+			return;
+		}
 	}
 
 	if (num_clusters > 0)
@@ -393,15 +414,24 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	// Compute new masks
 	if (model.name != "none")
 	{
+		const double th = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
+		const Point *p = *std::max_element(clusters[1].getPoints().begin(), clusters[1].getPoints().end(), [](const Point *a, const Point *b){ return a->values[0] < b->values[0]; });
+
 		size_t c;
 		for (c = 0;  c < clusters.size(); c++)
 		{
-			const double x = clusters[c].getCentroid()[0] / clusters.front().getCentroid()[0];
+			double quotient = clusters.front().getCentroid()[0];
+			if (detect_outlayers && quotient > th && clusters[0].getPoints().size() == 1)
+				quotient = p->values[0]; // The max in the second cluster
+
+			const double x = std::min(clusters[c].getCentroid()[0] / quotient, 1.0);
 			const uint32_t ways = std::round(model(x));
 			if (alternate_sides && (c % 2) == 1)
 				masks[c] = (complete_mask << (max_num_ways - ways)) & complete_mask; // The mask starts from the left
 			else
 				masks[c] = (complete_mask >> (max_num_ways - ways)); // The mask starts from the right
+			if (quotient != clusters.front().getCentroid()[0])
+				LOGDEB("The most slowed-down application seems an outlayer... use {} instead of {}, {}"_format(quotient, clusters.front().getCentroid()[0], quotient / clusters.front().getCentroid()[0]));
 		}
 		for (;  c < masks.size(); c++)
 			masks[c] = complete_mask;
