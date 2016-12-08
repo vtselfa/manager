@@ -430,13 +430,13 @@ int main(int argc, char *argv[])
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.
-		if (!vm.count("fin-output"))
+		if (vm["fin-output"].as<string>() == "")
 		{
 			auto o = ucompl_out.get();
 			cout << dynamic_cast<std::stringstream *>(o)->str();
 		}
 		// Same...
-		if (!vm.count("total-output"))
+		if (vm["total-output"].as<string>() == "")
 		{
 			auto o = total_out.get();
 			cout << dynamic_cast<std::stringstream *>(o)->str();
