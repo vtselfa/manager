@@ -420,16 +420,16 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 
 size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter)
 {
-	double best_result = -1;
-	size_t best_k = 0;
+	double best_result = -std::numeric_limits<double>().infinity();
+	size_t best_k = -1U;
 	std::vector<Cluster> best_clusters;
 	size_t best_iter = 0;
 
-	for (size_t k = 2; k <= std::min(max_k, points.size()-1); k++)
+	for (size_t k = 2; k <= std::min(max_k, points.size() - 1); k++)
 	{
 		size_t iter = clusterize(k, points, clusters, max_iter);
 		double result = dunn_index(clusters);
-		LOGDEB("k {} has a silhouette of {}"_format(k, result));
+		LOGDEB("k {} has a score of {}"_format(k, result));
 		if (result > best_result)
 		{
 			best_result = result;
@@ -440,8 +440,9 @@ size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &poin
 	}
 	clusters = best_clusters;
 
-	assert(best_result >= -1 && best_result <= 1);
 	assert(best_k == clusters.size());
+	assert(clusters.size() > 0);
+	assert(clusters.size() <= max_k);
 
 	return best_iter;
 }
