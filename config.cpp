@@ -27,6 +27,9 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		throw std::runtime_error("The CAT policy needs a 'kind' field");
 	string kind = policy["kind"].as<string>();
 
+	if (kind == "none")
+		return std::make_shared<cat::policy::Base>();
+
 	if (kind == "sf" )
 	{
 		LOGINF("Using Slowfirst (sf) CAT policy");
