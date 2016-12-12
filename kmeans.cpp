@@ -349,7 +349,7 @@ void KMeans::initClusters(size_t k, const std::vector<Point> &points, std::vecto
 
 void KMeans::reinitCluster(const std::vector<Point> &points, Cluster &c)
 {
-	size_t index = round((double) rand() / (double) RAND_MAX * (double) points.size());
+	size_t index = round((double) rand() / (double) RAND_MAX * (double) (points.size() - 1));
 	c.set_centroid(points[index].values);
 }
 
