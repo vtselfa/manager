@@ -421,7 +421,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		for (c = 0;  c < clusters.size(); c++)
 		{
 			double quotient = clusters.front().getCentroid()[0];
-			if (detect_outlayers && quotient > th && clusters[0].getPoints().size() == 1)
+			if (detect_outliers && quotient > th && clusters[0].getPoints().size() == 1)
 				quotient = p->values[0]; // The max in the second cluster
 
 			const double x = std::min(clusters[c].getCentroid()[0] / quotient, 1.0);

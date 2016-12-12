@@ -76,7 +76,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	else if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
-		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outlayers"};
+		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers"};
 		allowed.insert(allowed.end(), required.begin(), required.end());
 
 		// Check that required fields exist
@@ -98,10 +98,10 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		string model = policy["model"].as<string>();
 		bool alternate_sides = policy["alternate_sides"] ? policy["alternate_sides"].as<bool>() : false;
 		double min_stall_ratio = policy["min_stall_ratio"] ? policy["min_stall_ratio"].as<double>() : 0;
-		bool detect_outlayers = policy["detect_outlayers"] ? policy["detect_outlayers"].as<bool>() : false;
+		bool detect_outliers = policy["detect_outliers"] ? policy["detect_outliers"].as<bool>() : false;
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outlayers);
+		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers);
 	}
 
 	else

@@ -139,15 +139,15 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 	Model model;
 	bool alternate_sides;
 	double min_stall_ratio;
-	bool detect_outlayers;
+	bool detect_outliers;
 
 	// If num_clusters is not 0, then this number of clusters is used, instead of trying to find the optimal one
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, std::string model_str, bool alternate_sides, double min_stall_ratio, bool detect_outlayers) :
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, std::string model_str, bool alternate_sides, double min_stall_ratio, bool detect_outliers) :
 			SlowfirstClustered(every, {}, num_clusters),
 			model(model_str),
 			alternate_sides(alternate_sides),
 			min_stall_ratio(min_stall_ratio),
-			detect_outlayers(detect_outlayers) {}
+			detect_outliers(detect_outliers) {}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 
