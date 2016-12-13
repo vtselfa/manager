@@ -405,7 +405,10 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 		for(size_t i = 0; i < k; i++)
 		{
 			if (clusters[i].getPoints().size() == 0)
+			{
 				reinitCluster(points, clusters[i]);
+				done = false;
+			}
 			else
 				clusters[i].updateMeans();
 		}
