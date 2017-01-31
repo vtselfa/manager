@@ -393,18 +393,13 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		}
 	}
 
-	// Show all the models
-	for (const auto m : {Model("linear"), Model("quadratic"), Model("exponential")})
-	{
-		LOGDEB("The {} model:"_format(m.name));
-		for (size_t i = 0; i < clusters.size(); i++)
-		{
-			const double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
-			const double y = m(x);
-			LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
-		}
-	}
 	LOGDEB("Selected model: {}"_format(model.name));
+	for (size_t i = 0; i < clusters.size(); i++)
+	{
+		const double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
+		const double y = model(x);
+		LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
+	}
 
 	// Get current CAT masks
 	masks.resize(cat.get_max_num_cos());
