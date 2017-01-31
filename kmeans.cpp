@@ -79,6 +79,7 @@ double Cluster::centroid_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 {
+	assert(points.size() != 0);
 	if (points.size() == 0)
 		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
 	auto result = std::vector<P2PDist>();
@@ -96,6 +97,7 @@ std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance() const
 {
+	assert(points.size() != 0);
 	if (points.size() == 0)
 		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
 
@@ -421,7 +423,7 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 }
 
 
-size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter)
+size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters)
 {
 	double best_result = -std::numeric_limits<double>().infinity();
 	size_t best_k = -1U;
@@ -431,7 +433,13 @@ size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &poin
 	for (size_t k = 2; k <= std::min(max_k, points.size() - 1); k++)
 	{
 		size_t iter = clusterize(k, points, clusters, max_iter);
-		double result = dunn_index(clusters);
+		double result;
+		if (eval_clusters == EvalClusters::dunn)
+			result = dunn_index(clusters);
+		else if (eval_clusters == EvalClusters::silhouette)
+			result = silhouette(clusters);
+		else
+			throw std::runtime_error("Unknown eval_clusters algorithm");
 		LOGDEB("k {} has a score of {}"_format(k, result));
 		if (result > best_result)
 		{

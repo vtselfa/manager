@@ -362,7 +362,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	{
 		assert(num_clusters == 0);
 		LOGDEB("Try to find the optimal number of clusters...");
-		KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100);
+		KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100, eval_clusters);
 	}
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));

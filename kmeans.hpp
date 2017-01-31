@@ -116,6 +116,13 @@ class Cluster
 };
 
 
+enum class EvalClusters
+{
+	dunn,
+	silhouette
+};
+
+
 class KMeans
 {
 	protected:
@@ -145,7 +152,7 @@ class KMeans
 	size_t clusterize(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
 
 	static
-	size_t clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
+	size_t clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters);
 
 	static
 	std::string to_string(const std::vector<Cluster> &clusters);
