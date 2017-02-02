@@ -394,11 +394,14 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	}
 
 	LOGDEB("Selected model: {}"_format(model.name));
-	for (size_t i = 0; i < clusters.size(); i++)
+	if (model.name != "none")
 	{
-		const double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
-		const double y = model(x);
-		LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
+		for (size_t i = 0; i < clusters.size(); i++)
+		{
+			const double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
+			const double y = model(x);
+			LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, std::round(y)));
+		}
 	}
 
 	// Get current CAT masks
