@@ -14,8 +14,8 @@ class Point
 
 	public:
 
-	const size_t id;
-	const std::vector<double> values;
+	size_t id;
+	std::vector<double> values;
 
 	Point(size_t id, const std::vector<double>& values) :
 			id(id), values(values)

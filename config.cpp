@@ -79,7 +79,8 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	else if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
-		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters"};
+		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters", "cluster_sizes"};
+		vector<std::pair<string, string>> incompatible = {{"num_clusters", "eval_clusters"}, {"num_clusters", "cluster_sizes"}, {"eval_clusters", "cluster_sizes"}};
 		allowed.insert(allowed.end(), required.begin(), required.end());
 
 		// Check that required fields exist
@@ -95,6 +96,13 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 				LOGWAR("Field {} is not allowed in the {} policy"_format(field, kind));
 		}
 
+		// Check that there are not incompatible fields
+		for (const auto &pair : incompatible)
+		{
+			if (policy[pair.first] && policy[pair.second])
+				LOGWAR("Fields {} and {} cannot be used together in the {} policy"_format(pair.first, pair.second, kind));
+		}
+
 		// Read fields
 		uint64_t every = policy["every"].as<uint64_t>();
 		uint32_t num_clusters = policy["num_clusters"] ? policy["num_clusters"].as<uint32_t>() : 0;
@@ -103,9 +111,10 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		double min_stall_ratio = policy["min_stall_ratio"] ? policy["min_stall_ratio"].as<double>() : 0;
 		bool detect_outliers = policy["detect_outliers"] ? policy["detect_outliers"].as<bool>() : false;
 		string eval_clusters = policy["eval_clusters"] ? policy["eval_clusters"].as<string>() : "dunn";
+		vector<uint32_t> cluster_sizes = policy["cluster_sizes"] ? policy["cluster_sizes"].as<vector<uint32_t>>() : vector<uint32_t>();
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters);
+		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters, cluster_sizes);
 	}
 
 	else

@@ -361,8 +361,37 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	else
 	{
 		assert(num_clusters == 0);
-		LOGDEB("Try to find the optimal number of clusters...");
-		KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100, eval_clusters);
+
+		if (cluster_sizes.size() > 0)
+		{
+			LOGDEB("Use predetermined cluster sizes...");
+			// Sort points in DESCENDING order
+			std::sort(begin(data), end(data),
+					[](const Point &p1, const Point &p2)
+					{
+						return p1.values[0] > p2.values[0];
+					});
+			clusters.clear();
+			size_t cid = 0;
+			auto data_iter = data.begin();
+			for (const auto &size : cluster_sizes)
+			{
+				clusters.push_back(Cluster(cid++, {0}));
+				for (size_t i = 0; i < size; i++)
+				{
+					assert(data_iter != data.end());
+					const Point &point = *data_iter;
+					clusters.back().addPoint(&point);
+					data_iter++;
+				}
+				clusters.back().updateMeans();
+			}
+		}
+		else
+		{
+			LOGDEB("Try to find the optimal number of clusters...");
+			KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100, eval_clusters);
+		}
 	}
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), clusters.size()));

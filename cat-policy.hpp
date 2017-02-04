@@ -136,32 +136,38 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 		double operator() (double x) const { return model(x); }
 	};
 
-	Model model;
-	EvalClusters eval_clusters;
-	bool alternate_sides;
-	double min_stall_ratio;
-	bool detect_outliers;
+	const Model model;
+	const EvalClusters eval_clusters;
+	const bool alternate_sides;
+	const double min_stall_ratio;
+	const bool detect_outliers;
+	const std::vector<uint32_t> cluster_sizes; // Fixed cluster sizes
 
 	// If num_clusters is not 0, then this number of clusters is used, instead of trying to find the optimal one
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, std::string model_str, bool alternate_sides, double min_stall_ratio, bool detect_outliers, std::string eval_clusters_str) :
+	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, const std::string &model_str, bool alternate_sides,
+			double min_stall_ratio, bool detect_outliers, const std::string &eval_clusters_str, const std::vector<uint32_t> &cluster_sizes)
+		:
 			SlowfirstClustered(every, {}, num_clusters),
 			model(model_str),
+			eval_clusters(str_to_evalclusters(eval_clusters_str)),
 			alternate_sides(alternate_sides),
 			min_stall_ratio(min_stall_ratio),
-			detect_outliers(detect_outliers)
-	{
-		if (eval_clusters_str == "dunn")
-			eval_clusters = EvalClusters::dunn;
-		else if (eval_clusters_str == "silhouette")
-			eval_clusters = EvalClusters::silhouette;
-		else
-			throw std::runtime_error("Unknown eval_clusters algorithm");
-
-	}
+			detect_outliers(detect_outliers),
+			cluster_sizes(cluster_sizes)
+	{}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;
 
 	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
+
+	EvalClusters str_to_evalclusters(const std::string &str)
+	{
+		if (str == "dunn")
+			return EvalClusters::dunn;
+		if (str == "silhouette")
+			return EvalClusters::silhouette;
+		throw std::runtime_error("Unknown eval_clusters algorithm");
+	}
 };
 typedef SlowfirstClusteredOptimallyAdjusted SfCOA;
 
