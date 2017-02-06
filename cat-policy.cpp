@@ -1,5 +1,6 @@
 #include <cmath>
 #include <iostream>
+#include <iterator>
 #include <tuple>
 
 #include <boost/accumulators/accumulators.hpp>
@@ -385,6 +386,33 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 					data_iter++;
 				}
 				clusters.back().updateMeans();
+			}
+		}
+		else if (min_max)
+		{
+			LOGDEB("Make min max pairs...");
+			assert(data.size() % 2 == 0 && (data.size() / 2) <= cat.get_max_num_cos());
+			// Sort points in DESCENDING order
+			std::sort(begin(data), end(data),
+					[](const Point &p1, const Point &p2)
+					{
+						return p1.values[0] > p2.values[0];
+					});
+			clusters.clear();
+			size_t cid = 0;
+			auto it1 = data.begin();
+			auto it2 = data.end();
+			it2--;
+			while (std::distance(data.begin(), it1) < std::distance(data.begin(), it2))
+			{
+				const Point &p1 = *it1;
+				const Point &p2 = *it2;
+				clusters.push_back(Cluster(cid++, {0}));
+				clusters.back().addPoint(&p1);
+				clusters.back().addPoint(&p2);
+				clusters.back().updateMeans();
+				it1++;
+				it2--;
 			}
 		}
 		else

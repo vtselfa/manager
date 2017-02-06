@@ -79,8 +79,15 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	else if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
-		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters", "cluster_sizes"};
-		vector<std::pair<string, string>> incompatible = {{"num_clusters", "eval_clusters"}, {"num_clusters", "cluster_sizes"}, {"eval_clusters", "cluster_sizes"}};
+		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters", "cluster_sizes", "min_max"};
+		vector<std::pair<string, string>> incompatible = {
+				{"num_clusters", "eval_clusters"},
+				{"num_clusters", "cluster_sizes"},
+				{"eval_clusters", "cluster_sizes"},
+				{"min_max", "num_clusters"},
+				{"min_max", "cluster_sizes"},
+				{"min_max", "eval_clusters"},
+		};
 		allowed.insert(allowed.end(), required.begin(), required.end());
 
 		// Check that required fields exist
@@ -112,9 +119,10 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		bool detect_outliers = policy["detect_outliers"] ? policy["detect_outliers"].as<bool>() : false;
 		string eval_clusters = policy["eval_clusters"] ? policy["eval_clusters"].as<string>() : "dunn";
 		vector<uint32_t> cluster_sizes = policy["cluster_sizes"] ? policy["cluster_sizes"].as<vector<uint32_t>>() : vector<uint32_t>();
+		bool min_max = policy["min_max"] ? policy["min_max"].as<bool>() : false;
 
 		LOGINF("Using Slowfirst Clustered Optimally and Adjusted (sfcoa) CAT policy");
-		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters, cluster_sizes);
+		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters, cluster_sizes, min_max);
 	}
 
 	else
