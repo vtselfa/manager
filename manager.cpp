@@ -99,15 +99,16 @@ void loop(
 
 	// Loop
 	uint32_t interval;
+	auto last_measurements  = vector<Measurement>();
 	for (interval = 0; interval < max_int; interval++)
 	{
 		LOGINF("Interval {}"_format(interval));
 		auto cores         = tasks_cores_used(tasklist);
-		auto stats         = vector<Stats>();
+		auto measurements  = vector<Measurement>();
 		bool all_completed = true; // Have all the tasks reached their execution limit?
 
 		// Run for some time, take stats and pause
-		uint64_t elapsed_us = perf.measure(cores, stats);
+		uint64_t elapsed_us = perf.measure(cores, measurements);
 		total_elapsed_us += elapsed_us;
 
 		// Process tasks...
@@ -116,20 +117,17 @@ void loop(
 			auto &task = tasklist[i];
 
 			// Deal with PCM transcient errors
-			if (stats_are_wrong(stats[i]) && task.stats_acumulated.instructions > 0)
+			if (measurements_are_wrong(measurements[i]) && task.stats_acumulated.instructions > 0)
 			{
-				LOGWAR("The results for the interval " << interval << " seem wrong:");
-				LOGWAR(stats_header_to_string(" "));
-				LOGWAR(stats_to_string(stats[i], task.cpu, task.id, task.executable, interval, " "));
-				LOGWAR("They will be replaced with the values from the previous interval:");
+				LOGWAR("The results for the interval " << interval << " seem wrong, they will be replaced with the values from the previous interval:");
 				LOGWAR(stats_to_string(task.stats_interval, task.cpu, task.id, task.executable,  interval - 1, " "));
-				stats[i] = task.stats_interval;
+				measurements[i] = last_measurements[i];
 			}
 
 			// Count stats
-			task.stats_interval    = stats[i];
-			task.stats_acumulated += stats[i];
-			task.stats_total      += stats[i];
+			task.stats_interval = Stats(measurements[i]);
+			task.stats_acumulated.accum(measurements[i]);
+			task.stats_total.accum(measurements[i]);
 
 			// Instruction limit reached
 			if (task.stats_acumulated.instructions >= task.max_instr)
@@ -167,6 +165,8 @@ void loop(
 		int64_t integral     = (int64_t) time_int_us * (interval + 1) - (int64_t) total_elapsed_us;
 		adj_delay_us += kp * proportional;
 		adj_delay_us += ki * integral;
+
+		last_measurements = measurements;
 	}
 
 	// Print acumulated stats for non completed tasks and total stats for all the tasks

@@ -15,6 +15,7 @@
 #include "task.hpp"
 
 
+namespace acc = boost::accumulators;
 namespace fs = boost::filesystem;
 
 using std::to_string;
@@ -113,6 +114,8 @@ void tasks_resume(const std::vector<Task> &tasklist)
 			throw std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status)));
 	}
 }
+
+
 // Execute a task and immediately pause it
 void task_execute(Task &task)
 {
@@ -292,7 +295,7 @@ void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostre
 
 	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
 	{
-		out << s.event[i];
+		out << acc::sum(s.events[i]);
 		if (i < MAX_EVENTS - 1)
 			out << sep;
 	}

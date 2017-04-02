@@ -21,6 +21,7 @@ namespace policy
 {
 
 
+namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
@@ -72,7 +73,7 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
 		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = task.stats_total.event[2];
+		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events[2]);
 		v.push_back(std::make_pair(task.cpu, l2_miss_stalls));
 	}
 
@@ -114,7 +115,7 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
 		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = task.stats_total.event[2];
+		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events[2]);
 		data.push_back(Point(t, {(double) l2_miss_stalls}));
 		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
 	}
@@ -320,8 +321,6 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 
 void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
 {
-	namespace acc = boost::accumulators;
-
 	// Apply the policy only when the amount of intervals specified has passed
 	if (current_interval % every != 0)
 		return;
@@ -333,13 +332,37 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 	// Put data in the format KMeans expects
 	LOGDEB("Tasks:");
-	for (uint32_t t = 0; t < tasklist.size(); t++)
+	uint64_t min_stalls = -1;
+	uint64_t min_accum_stalls = -1;
+	for (const auto &task : tasklist)
 	{
-		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = task.stats_total.event[2];
-		accum(l2_miss_stalls);
-		data.push_back(Point(task.id, {(double) l2_miss_stalls}));
-		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
+		uint64_t rmean = acc::rolling_mean(task.stats_interval.events[2]);
+		uint64_t sum = acc::sum(task.stats_interval.events[2]);
+		min_stalls = std::min(rmean, min_stalls);
+		min_accum_stalls = std::min(sum, min_accum_stalls);
+	}
+
+	for (const auto &task : tasklist)
+	{
+		// const double kp = 0;
+		// const double ki = 1;
+
+		uint64_t l2_hits = acc::rolling_mean(task.stats_interval.events[0]);
+		uint64_t l2_misses = acc::rolling_mean(task.stats_interval.events[1]);
+		double hr = (double) l2_hits / (double) (l2_hits + l2_misses);
+
+		uint64_t stalls = acc::rolling_mean(task.stats_interval.events[2]);
+		uint64_t accum_stalls = acc::sum(task.stats_interval.events[2]);
+
+		double metric = accum_stalls;
+
+		double completed = task.max_instr ?
+				(double) task.stats_total.instructions / (double) task.max_instr : task.completed;
+
+		accum(stalls);
+
+		data.push_back(Point(task.id, {metric}));
+		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {:.2f}, metric: {}, stalls: {:n}, hr: {}}}", task.id, task.executable, completed, metric, stalls, hr));
 	}
 
 	if (min_stall_ratio > 0)
@@ -435,21 +458,6 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	for (const auto &cluster : clusters)
 		LOGDEB(cluster.to_string());
 
-	// Map clusters to COSs
-	for (size_t c = 0; c < clusters.size(); c++)
-	{
-		const auto &cluster = clusters[c];
-
-		// Iterate tasks in cluster and put them in the adequate COS
-		size_t i = 0;
-		for(const auto &p : cluster.getPoints())
-		{
-			const Task &task = tasklist[p->id];
-			cat.set_cos_cpu(c, task.cpu);
-			i++;
-		}
-	}
-
 	LOGDEB("Selected model: {}"_format(model.name));
 	if (model.name != "none")
 	{
@@ -477,7 +485,10 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		{
 			double quotient = clusters.front().getCentroid()[0];
 			if (detect_outliers && quotient > th && clusters[0].getPoints().size() == 1)
+			{
 				quotient = p->values[0]; // The max in the second cluster
+				LOGDEB("The most slowed-down application seems an outlayer... use {} instead of {}, {}"_format(quotient, clusters.front().getCentroid()[0], quotient / clusters.front().getCentroid()[0]));
+			}
 
 			const double x = std::min(clusters[c].getCentroid()[0] / quotient, 1.0);
 			const uint32_t ways = std::round(model(x));
@@ -485,11 +496,10 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 				masks[c] = (complete_mask << (max_num_ways - ways)) & complete_mask; // The mask starts from the left
 			else
 				masks[c] = (complete_mask >> (max_num_ways - ways)); // The mask starts from the right
-			if (quotient != clusters.front().getCentroid()[0])
-				LOGDEB("The most slowed-down application seems an outlayer... use {} instead of {}, {}"_format(quotient, clusters.front().getCentroid()[0], quotient / clusters.front().getCentroid()[0]));
 		}
 		for (;  c < masks.size(); c++)
 			masks[c] = complete_mask;
+		set_masks(masks);
 	}
 
 	LOGDEB("Classes Of Service:");
@@ -501,6 +511,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			size_t i = 0;
 			for (const auto &p : clusters[c].getPoints())
 			{
+				const Task &task = tasklist[p->id];
+				cat.set_cos_cpu(c, task.cpu);
 				task_ids += std::to_string(p->id);
 				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
 				i++;
@@ -508,9 +520,6 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		}
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", c, masks[c], __builtin_popcount(masks[c]), task_ids));
 	}
-
-	if (model.name != "none")
-		set_masks(masks);
 }
 
 

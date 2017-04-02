@@ -6,37 +6,60 @@
 #include "stats.hpp"
 
 
-Stats& Stats::operator+=(const Stats &o)
+#define WIN_SIZE 7
+
+
+namespace acc = boost::accumulators;
+
+
+Stats::Stats() : events(MAX_EVENTS, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)) {}
+
+
+Stats::Stats(const Measurement &m) :
+		us(m.us),
+		instructions(m.instructions),
+		cycles(m.cycles),
+		invariant_cycles(m.invariant_cycles),
+		ipc((double) m.instructions / (double) m.cycles),
+		ipnc((double) m.instructions / (double) m.invariant_cycles),
+		rel_freq(m.rel_freq),
+		act_rel_freq(m.act_rel_freq),
+		l3_kbytes_occ(m.l3_kbytes_occ),
+		mc_gbytes_rd(m.mc_gbytes_rd),
+		mc_gbytes_wt(m.mc_gbytes_wt),
+		proc_energy(m.proc_energy),
+		dram_energy(m.dram_energy),
+		events(MAX_EVENTS, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE))
 {
-	// Compute this metrics before modifying other things
-	rel_freq     = ((rel_freq * invariant_cycles) + (o.rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
-	act_rel_freq = ((act_rel_freq * invariant_cycles) + (o.act_rel_freq * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles); // Weighted mean
-
-	// Weighted mean, which assumes that all the interval had the same occupancy,
-	// which may be not true, because we only know the final result, but...
-	l3_kbytes_occ = ((l3_kbytes_occ * invariant_cycles) + (o.l3_kbytes_occ * o.invariant_cycles)) / (invariant_cycles + o.invariant_cycles);
-
-	us               += o.us;
-	instructions     += o.instructions;
-	cycles           += o.cycles;
-	invariant_cycles += o.invariant_cycles;
-	ipc              = (double) instructions / (double) cycles;     // We could also do a weighted mean
-	ipnc             = (double) instructions / (double) invariant_cycles; // We could also do a weighted mean
-	mc_gbytes_rd     += o.mc_gbytes_rd;
-	mc_gbytes_wt     += o.mc_gbytes_wt;
-	proc_energy      += o.proc_energy;
-	dram_energy      += o.dram_energy;
 	for (int i = 0; i < MAX_EVENTS; i++)
-		event[i] += o.event[i];
-	return *this;
-
+		events[i](m.events[i]);
 }
 
 
-Stats operator+(Stats a, const Stats &b)
+Stats& Stats::accum(const Measurement &m)
 {
-	a += b;
-	return a;
+	// Compute this metrics before modifying other things
+	rel_freq     = ((rel_freq * invariant_cycles) + (m.rel_freq * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles); // Weighted mean
+	act_rel_freq = ((act_rel_freq * invariant_cycles) + (m.act_rel_freq * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles); // Weighted mean
+
+	// Weighted mean, which assumes that all the interval had the same occupancy,
+	// which may be not true, because we only know the final result, but...
+	l3_kbytes_occ = ((l3_kbytes_occ * invariant_cycles) + (m.l3_kbytes_occ * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles);
+
+	us               += m.us;
+	instructions     += m.instructions;
+	cycles           += m.cycles;
+	invariant_cycles += m.invariant_cycles;
+	ipc              = (double) instructions / (double) cycles;     // We could also do a weighted mean
+	ipnc             = (double) instructions / (double) invariant_cycles; // We could also do a weighted mean
+	mc_gbytes_rd     += m.mc_gbytes_rd;
+	mc_gbytes_wt     += m.mc_gbytes_wt;
+	proc_energy      += m.proc_energy;
+	dram_energy      += m.dram_energy;
+	for (int i = 0; i < MAX_EVENTS; i++)
+		events[i](m.events[i]);
+	return *this;
+
 }
 
 
@@ -97,7 +120,7 @@ std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std
 	out << s.dram_energy      << sep;
 	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
 	{
-		out << s.event[i];
+		out << acc::sum(s.events[i]);
 		if (i < MAX_EVENTS - 1)
 			out << sep;
 	}
@@ -149,6 +172,40 @@ bool stats_are_wrong(const Stats &s)
 		return true;
 
 	if (s.proc_energy < 0 || s.dram_energy < 0)
+		return true;
+
+	return false;
+}
+
+
+// Detect transcient errors in PCM results
+// They happen sometimes... Good work, Intel.
+bool measurements_are_wrong(const Measurement &m)
+{
+	const double ipc = (double) m.instructions / (double) m.cycles;
+	const double ipnc = (double) m.instructions / (double) m.invariant_cycles;
+	const double approx_mhz = (double) m.cycles / (double) m.us;
+	const double approx_inv_mhz = (double) m.cycles / (double) m.us;
+
+	if (approx_mhz > 10000 || approx_inv_mhz > 10000)
+		return true;
+
+	if (ipnc > 100 || ipnc < 0)
+		return true;
+
+	if (ipc > 100 || ipc < 0)
+		return true;
+
+	if (m.rel_freq < 0 || m.act_rel_freq < 0)
+		return true;
+
+	if (m.l3_kbytes_occ > 1000000) // More that one GB...
+		return true;
+
+	if (m.mc_gbytes_rd < 0 || m.mc_gbytes_wt < 0)
+		return true;
+
+	if (m.proc_energy < 0 || m.dram_energy < 0)
 		return true;
 
 	return false;

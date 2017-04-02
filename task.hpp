@@ -31,7 +31,7 @@ struct Task
 	Stats stats_interval   = Stats(); // Only last interval
 
 	bool limit_reached = false; // Has the instruction limit been reached?
-	uint32_t completed;         // Number of times it has reached the instruction limit
+	uint32_t completed = 0;     // Number of times it has reached the instruction limit
 	bool batch = false;         // Batch tasks do not need to be completed in order to finish the execution
 
 	Task() = delete;

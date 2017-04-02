@@ -104,7 +104,7 @@ class PerfCountMon
 
 
 	// Takes snapshot, works, takes another snapshot, and returns the results
-	uint64_t measure(const std::vector<uint32_t> &cores, std::vector<Stats> &results)
+	uint64_t measure(const std::vector<uint32_t> &cores, std::vector<Measurement> &results)
 	{
 		namespace chr = std::chrono;
 
@@ -141,14 +141,12 @@ class PerfCountMon
 			if (!m->isCoreOnline(core))
 				throw std::runtime_error("Core " + std::to_string(core) + " is not online");
 
-			Stats stats =
+			Measurement m =
 			{
 				.us               = duration,
 				.instructions     = getInstructionsRetired(cb[core], ca[core]),
 				.cycles           = getCycles(cb[core], ca[core]),
 				.invariant_cycles = getInvariantTSC(cb[core], ca[core]),
-				.ipc              = getIPC(cb[core], ca[core]),
-				.ipnc             = getExecUsage(cb[core], ca[core]),
 				.rel_freq         = getRelativeFrequency(cb[core], ca[core]),
 				.act_rel_freq     = getActiveRelativeFrequency(cb[core], ca[core]),
 				.l3_kbytes_occ    = getL3CacheOccupancy(ca[core]),
@@ -158,9 +156,9 @@ class PerfCountMon
 				.dram_energy      = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
 			};
 			for (int i = 0; i < MAX_EVENTS; ++i)
-				stats.event[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
+				m.events[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
 
-			results.push_back(stats);
+			results.push_back(m);
 		}
 
 		return duration;
