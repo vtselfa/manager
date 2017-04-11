@@ -34,6 +34,7 @@ using std::to_string;
 using std::vector;
 using std::this_thread::sleep_for;
 using std::cout;
+using std::cerr;
 using std::endl;
 using fmt::literals::operator""_format;
 
@@ -301,10 +302,8 @@ int main(int argc, char *argv[])
 	std::setlocale(LC_ALL, "");
 
 	// Default log conf
-	const string logfile = "manager.log";
 	const string min_clog = "war";
 	const string min_flog = "dbg";
-	general_log::init(logfile, general_log::severity_level(min_clog), general_log::severity_level(min_flog));
 
 	po::options_description desc("Allowed options");
 	desc.add_options()
@@ -323,7 +322,7 @@ int main(int argc, char *argv[])
 		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after the program execution. Note that even if this is false a CAT policy may reset the CAT config during it's normal operation.")
 		("clog-min", po::value<string>()->default_value(min_clog), "Minimum severity level to log into the console, defaults to warning")
 		("flog-min", po::value<string>()->default_value(min_flog), "Minimum severity level to log into the log file, defaults to info")
-		("log-file", po::value<string>()->default_value(logfile), "file used for the general application log")
+		("log-file", po::value<string>()->default_value("manager.log"), "file used for the general application log")
 		;
 
 	bool option_error = false;
@@ -342,7 +341,7 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		LOGERR(e.what());
+		cerr << e.what() << endl;
 		option_error = true;
 	}
 
@@ -370,7 +369,6 @@ int main(int argc, char *argv[])
 		set_cpu_affinity(vm["cpu-affinity"].as<vector<uint32_t>>());
 
 	// Open output streams
-
 	auto int_out    = std::shared_ptr<std::ostream>();
 	auto ucompl_out = std::shared_ptr<std::ostream>();
 	auto total_out  = std::shared_ptr<std::ostream>();
