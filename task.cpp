@@ -273,7 +273,7 @@ void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostre
 		LOGFAT("Unknown stats kind");
 
 	out << interval           << sep;
-	out << t.cpu                << sep << std::setfill('0') << std::setw(2);
+	out << t.cpu              << sep << std::setfill('0') << std::setw(2);
 	out << t.id << "_" << t.executable << sep;
 
 	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
@@ -291,19 +291,18 @@ void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostre
 	out << s.mc_gbytes_rd     << sep;
 	out << s.mc_gbytes_wt     << sep;
 	out << s.proc_energy      << sep;
-	out << s.dram_energy      << sep;
+	out << s.dram_energy;
 
-	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	for (const auto &kv : s.events)
 	{
-		out << acc::sum(s.events[i]);
-		if (i < MAX_EVENTS - 1)
-			out << sep;
+		out << sep;
+		out << acc::sum(kv.second);
 	}
 	out << std::endl;
 }
 
 
-void task_stats_print_headers(StatsKind sk, std::ostream &out, const std::string &sep)
+void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep)
 {
 	out << "interval" << sep;
 	out << "core" << sep;
@@ -324,13 +323,13 @@ void task_stats_print_headers(StatsKind sk, std::ostream &out, const std::string
 	out << "mc_gbytes_rd" << sep;
 	out << "mc_gbytes_wt" << sep;
 	out << "proc_energy" << sep;
-	out << "dram_energy" << sep;
+	out << "dram_energy";
 
-	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	for (const auto &kv : t.stats_total.events) // It should not matter which stats we iterate...
 	{
-		out << "ev" << i;
-		if (i < MAX_EVENTS - 1)
-			out << sep;
+		out << sep;
+		out << kv.first;
 	}
+
 	out << std::endl;
 }

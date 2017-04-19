@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <ostream>
 
 
@@ -32,8 +33,8 @@ struct Measurement
 	double proc_energy = 0;  // In joules
 	double dram_energy = 0;  // In joules
 
-	// Core events
-	uint64_t events[MAX_EVENTS];
+	// Core events (event name, data)
+	std::map<std::string, uint64_t> events;
 
 	Measurement() = default;
 };
@@ -68,9 +69,9 @@ struct Stats
 			ACC::tag::variance,
 			ACC::tag::rolling_mean>> accum_t;
 	#undef ACC
-	std::vector<accum_t> events;
+	std::map<std::string, accum_t> events;
 
-	Stats();
+	Stats() = default;
 	Stats(const Measurement &m);
 
 	Stats& accum(const Measurement &m);
@@ -78,11 +79,11 @@ struct Stats
 };
 
 
-std::string stats_final_header_to_string(const std::string &sep=",");
-std::string stats_header_to_string(const std::string &sep=",");
+std::string stats_final_header_to_string(const Stats &s, const std::string &sep);
+std::string stats_header_to_string(const Stats &s, const std::string &sep=",");
 std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep=",");
-void stats_final_print_header(std::ostream &out, const std::string &sep=",");
-void stats_print_header(std::ostream &out, const std::string &sep=",");
+void stats_final_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
+void stats_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
 void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval = -1ULL, const std::string &sep=",");
 bool stats_are_wrong(const Stats &s);
 bool measurements_are_wrong(const Measurement &m);

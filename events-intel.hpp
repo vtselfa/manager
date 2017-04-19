@@ -37,6 +37,8 @@ class PerfCountMon
 	Wait wait;
 	Pause pause;
 
+	std::vector<std::string> event_names;
+
 	public:
 
 	PerfCountMon() = delete;
@@ -87,7 +89,10 @@ class PerfCountMon
 
 		// Build events
 		for (size_t i = 0; i < str_events.size(); i++)
+		{
 			pcm_build_event(str_events[i].c_str(), regs[i], events[i]);
+			event_names.push_back(events[i].name);
+		}
 
 		// Prepare conf
 		conf.fixedCfg = NULL; // default
@@ -155,8 +160,8 @@ class PerfCountMon
 				.proc_energy      = getConsumedJoules(sb, sa),     // Energy conumed by the processor, excluding the DRAM
 				.dram_energy      = getDRAMConsumedJoules(sb, sa), // Energy consumed by the DRAM
 			};
-			for (int i = 0; i < MAX_EVENTS; ++i)
-				m.events[i] = getNumberOfCustomEvents(i, cb[core], ca[core]);
+			for (size_t i = 0; i < event_names.size(); ++i)
+				m.events[event_names[i]] = getNumberOfCustomEvents(i, cb[core], ca[core]);
 
 			results.push_back(m);
 		}

@@ -68,4 +68,4 @@ void task_kill_and_restart(Task &task);
 std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
 void tasks_kill_and_restart(std::vector<Task> &tasklist);
 void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep = ",");
-void task_stats_print_headers(StatsKind sk, std::ostream &out, const std::string &sep = ",");
+void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep = ",");

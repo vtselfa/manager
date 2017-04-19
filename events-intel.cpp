@@ -17,6 +17,7 @@ void pcm_build_event(const char *event_str, EventSelectRegister &reg, CoreEvent 
 
 	memset(name, 0, EVENT_SIZE);
 	strncpy(name, event_str, EVENT_SIZE - 1);
+	event.name[0] = '\0';
 
 	for (j = 1, str1 = name; ; j++, str1 = NULL)
 	{
@@ -64,6 +65,8 @@ void pcm_build_event(const char *event_str, EventSelectRegister &reg, CoreEvent 
 		}
 	}
 	event.value = reg.value;
+	if (strlen(event.name) == 0)
+		throw std::runtime_error(std::string("Event '") + event_str + "' has no name field, which is required");
 }
 
 

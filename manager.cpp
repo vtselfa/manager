@@ -94,9 +94,9 @@ void loop(
 	perf.mon_custom_events(events);
 
 	// Print headers
-	task_stats_print_headers(StatsKind::interval, out);
-	task_stats_print_headers(StatsKind::until_compl_summary, ucompl_out);
-	task_stats_print_headers(StatsKind::total_summary, total_out);
+	task_stats_print_headers(tasklist[0], StatsKind::interval, out);
+	task_stats_print_headers(tasklist[0], StatsKind::until_compl_summary, ucompl_out);
+	task_stats_print_headers(tasklist[0], StatsKind::total_summary, total_out);
 
 	// Loop
 	uint32_t interval;

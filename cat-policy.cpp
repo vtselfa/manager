@@ -73,7 +73,7 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
 		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events[2]);
+		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
 		v.push_back(std::make_pair(task.cpu, l2_miss_stalls));
 	}
 
@@ -115,7 +115,7 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
 		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events[2]);
+		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
 		data.push_back(Point(t, {(double) l2_miss_stalls}));
 		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
 	}
@@ -336,8 +336,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	uint64_t min_accum_stalls = -1;
 	for (const auto &task : tasklist)
 	{
-		uint64_t rmean = acc::rolling_mean(task.stats_interval.events[2]);
-		uint64_t sum = acc::sum(task.stats_interval.events[2]);
+		uint64_t rmean = acc::rolling_mean(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
+		uint64_t sum = acc::sum(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
 		min_stalls = std::min(rmean, min_stalls);
 		min_accum_stalls = std::min(sum, min_accum_stalls);
 	}
@@ -347,12 +347,12 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		// const double kp = 0;
 		// const double ki = 1;
 
-		uint64_t l2_hits = acc::rolling_mean(task.stats_interval.events[0]);
-		uint64_t l2_misses = acc::rolling_mean(task.stats_interval.events[1]);
+		uint64_t l2_hits = acc::rolling_mean(task.stats_interval.events.at("MEM_LOAD_UOPS_RETIRED.L3_HIT"));
+		uint64_t l2_misses = acc::rolling_mean(task.stats_interval.events.at("MEM_LOAD_UOPS_RETIRED.L3_MISS"));
 		double hr = (double) l2_hits / (double) (l2_hits + l2_misses);
 
-		uint64_t stalls = acc::rolling_mean(task.stats_interval.events[2]);
-		uint64_t accum_stalls = acc::sum(task.stats_interval.events[2]);
+		uint64_t stalls = acc::rolling_mean(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
+		uint64_t accum_stalls = acc::sum(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
 
 		double metric = accum_stalls;
 

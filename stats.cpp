@@ -12,9 +12,6 @@
 namespace acc = boost::accumulators;
 
 
-Stats::Stats() : events(MAX_EVENTS, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)) {}
-
-
 Stats::Stats(const Measurement &m) :
 		us(m.us),
 		instructions(m.instructions),
@@ -28,11 +25,13 @@ Stats::Stats(const Measurement &m) :
 		mc_gbytes_rd(m.mc_gbytes_rd),
 		mc_gbytes_wt(m.mc_gbytes_wt),
 		proc_energy(m.proc_energy),
-		dram_energy(m.dram_energy),
-		events(MAX_EVENTS, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE))
+		dram_energy(m.dram_energy)
 {
-	for (int i = 0; i < MAX_EVENTS; i++)
-		events[i](m.events[i]);
+	for (const auto &kv : m.events)
+	{
+		events.insert(std::make_pair(kv.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
+		events.at(kv.first)(kv.second);
+	}
 }
 
 
@@ -56,14 +55,20 @@ Stats& Stats::accum(const Measurement &m)
 	mc_gbytes_wt     += m.mc_gbytes_wt;
 	proc_energy      += m.proc_energy;
 	dram_energy      += m.dram_energy;
-	for (int i = 0; i < MAX_EVENTS; i++)
-		events[i](m.events[i]);
+	if (events.size() == 0)
+	{
+		for (const auto &kv : m.events)
+			events.insert(std::make_pair(kv.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
+	}
+	assert(m.events.size() == events.size());
+	for (const auto &kv : m.events)
+		events.at(kv.first)(kv.second);
 	return *this;
 
 }
 
 
-std::string stats_final_header_to_string(const std::string &sep)
+std::string stats_final_header_to_string(const Stats &s, const std::string &sep)
 {
 	std::string result =
 			"core"             + sep +
@@ -80,21 +85,20 @@ std::string stats_final_header_to_string(const std::string &sep)
 			"mc_gbytes_rd"     + sep +
 			"mc_gbytes_wt"     + sep +
 			"proc_energy"      + sep +
-			"dram_energy"      + sep;
+			"dram_energy";
 
-	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	for (const auto &kv : s.events)
 	{
-		result += "ev" + std::to_string(i);
-		if (i < MAX_EVENTS - 1)
-			result += sep;
+		result += sep;
+		result += kv.first;
 	}
 	return result;
 }
 
 
-std::string stats_header_to_string(const std::string &sep)
+std::string stats_header_to_string(const Stats &s, const std::string &sep)
 {
-	return "interval" + sep + stats_final_header_to_string(sep);
+	return "interval" + sep + stats_final_header_to_string(s, sep);
 }
 
 
@@ -117,26 +121,25 @@ std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std
 	out << s.mc_gbytes_rd     << sep;
 	out << s.mc_gbytes_wt     << sep;
 	out << s.proc_energy      << sep;
-	out << s.dram_energy      << sep;
-	for (uint32_t i = 0; i < MAX_EVENTS; ++i)
+	out << s.dram_energy;
+	for (const auto &kv : s.events)
 	{
-		out << acc::sum(s.events[i]);
-		if (i < MAX_EVENTS - 1)
-			out << sep;
+		out << sep;
+		out << acc::sum(kv.second);
 	}
 	return out.str();
 }
 
 
-void stats_final_print_header(std::ostream &out, const std::string &sep)
+void stats_final_print_header(const Stats &s, std::ostream &out, const std::string &sep)
 {
-	out << stats_final_header_to_string(sep) << std::endl;
+	out << stats_final_header_to_string(s, sep) << std::endl;
 }
 
 
-void stats_print_header(std::ostream &out, const std::string &sep)
+void stats_print_header(const Stats &s, std::ostream &out, const std::string &sep)
 {
-	out << stats_header_to_string(sep) << std::endl;
+	out << stats_header_to_string(s, sep) << std::endl;
 }
 
 
@@ -199,7 +202,7 @@ bool measurements_are_wrong(const Measurement &m)
 	if (m.rel_freq < 0 || m.act_rel_freq < 0)
 		return true;
 
-	if (m.l3_kbytes_occ > 1000000) // More that one GB...
+	if (m.l3_kbytes_occ > 1000000) // More than one GB...
 		return true;
 
 	if (m.mc_gbytes_rd < 0 || m.mc_gbytes_wt < 0)
