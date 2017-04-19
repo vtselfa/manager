@@ -2,11 +2,11 @@
 #include <boost/filesystem.hpp>
 #include <glib.h>
 
-// #include <fcntl.h>
 #include <grp.h>
-// #include <unistd.h>
 
 #include "common.hpp"
+#include "throw-with-trace.hpp"
+
 
 // Opens an output stream and checks for errors
 std::ofstream open_ofstream(const std::string &path)
@@ -36,7 +36,7 @@ std::string extract_executable_name(const std::string &cmd)
 	char **argv;
 
 	if (!g_shell_parse_argv(cmd.c_str(), &argc, &argv, NULL))
-		throw std::runtime_error("Could not parse commandline '" + cmd + "'");
+		throw_with_trace(std::runtime_error("Could not parse commandline '" + cmd + "'"));
 
 	std::string result = boost::filesystem::basename(argv[0]);
 	g_strfreev(argv); // Free the memory allocated for argv
@@ -50,11 +50,11 @@ void dir_copy(const std::string &source, const std::string &dest)
 	namespace fs = boost::filesystem;
 
 	if (!fs::exists(source) || !fs::is_directory(source))
-		throw std::runtime_error("Source directory " + source + " does not exist or is not a directory");
+		throw_with_trace(std::runtime_error("Source directory " + source + " does not exist or is not a directory"));
 	if (fs::exists(dest))
-		throw std::runtime_error("Destination directory " + dest + " already exists");
+		throw_with_trace(std::runtime_error("Destination directory " + dest + " already exists"));
 	if (!fs::create_directories(dest))
-		throw std::runtime_error("Cannot create destination directory " + dest);
+		throw_with_trace(std::runtime_error("Cannot create destination directory " + dest));
 
 	typedef fs::recursive_directory_iterator RDIter;
 	for (auto it = RDIter(source), end = RDIter(); it != end; ++it)
@@ -102,13 +102,13 @@ void drop_privileges()
 		return;
 
 	if (setgid(gid) < 0)
-		throw std::runtime_error("Cannot change gid: " + std::string(strerror(errno)));
+		throw_with_trace(std::runtime_error("Cannot change gid: " + std::string(strerror(errno))));
 
 	if (initgroups(userstr, gid) < 0)
-		throw std::runtime_error("Cannot change group access list: " + std::string(strerror(errno)));
+		throw_with_trace(std::runtime_error("Cannot change group access list: " + std::string(strerror(errno))));
 
 	if (setuid(uid) < 0)
-		throw std::runtime_error("Cannot change uid: " + std::string(strerror(errno)));
+		throw_with_trace(std::runtime_error("Cannot change uid: " + std::string(strerror(errno))));
 }
 
 
@@ -120,5 +120,5 @@ void set_cpu_affinity(std::vector<uint32_t> cpus, int pid)
 	for (auto cpu : cpus)
 		CPU_SET(cpu, &mask);
 	if (sched_setaffinity(pid, sizeof(mask), &mask) < 0)
-		throw std::runtime_error("Could not set CPU affinity: " + std::string(strerror(errno)));
+		throw_with_trace(std::runtime_error("Could not set CPU affinity: " + std::string(strerror(errno))));
 }

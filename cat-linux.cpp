@@ -49,7 +49,7 @@ void cos_set_cpus(string cos, dynamic_bitset<> cpus)
 
 	mask_res = cos_get_cpus(cos).to_ulong();
 	if (mask != mask_res)
-		throw std::runtime_error("Could not set mask for cpus for COS " + cos);
+		throw_with_trace(std::runtime_error("Could not set mask for cpus for COS " + cos));
 }
 
 
@@ -80,7 +80,7 @@ void cos_set_schemata(string cos, dynamic_bitset<> schemata)
 	int mask_res;
 
 	if (cos == "")
-		throw std::runtime_error("Use '.' to refer to the COS at the base level, which doesn't seem to do anything");
+		throw_with_trace(std::runtime_error("Use '.' to refer to the COS at the base level, which doesn't seem to do anything"));
 
 	fs::current_path(ROOT);
 	fs::current_path(cos);
@@ -90,7 +90,7 @@ void cos_set_schemata(string cos, dynamic_bitset<> schemata)
 
 	mask_res = cos_get_schemata(cos).to_ulong();
 	if (mask != mask_res)
-		throw std::runtime_error("Could not set schemata mask for COS " + cos);
+		throw_with_trace(std::runtime_error("Could not set schemata mask for COS " + cos));
 }
 
 
@@ -105,10 +105,10 @@ void cos_mkdir(string cos)
 		if (fs::is_directory(p) && p != "./info")
 			count++;
 	if (count >= MAX_COS)
-		throw std::runtime_error("Too many COS, the maximum is " + std::to_string(MAX_COS));
+		throw_with_trace(std::runtime_error("Too many COS, the maximum is " + std::to_string(MAX_COS)));
 
 	if (fs::exists(cos))
-		throw std::runtime_error("COS " + cos + " already exists");
+		throw_with_trace(std::runtime_error("COS " + cos + " already exists"));
 
 	fs::create_directory(cos);
 }
@@ -118,7 +118,7 @@ void cos_mkdir(string cos)
 vector<string> cos_get_tasks(string cos)
 {
 	if (cos == ".")
-		throw std::runtime_error("There is no point in reading the tasks assigned to the default COS, check for bugs");
+		throw_with_trace(std::runtime_error("There is no point in reading the tasks assigned to the default COS, check for bugs"));
 
 	string path = string(ROOT) + "/" + cos + "/tasks";
 	std::ifstream f = open_ifstream(path);
@@ -163,7 +163,7 @@ void cos_set_tasks(string cos, vector<string> tasks)
 			if (tasks[i] != tasks_res[i])
 				break;
 		if (i != tasks.size())
-			throw std::runtime_error("At least task " + tasks[i] + " could not be assigned to COS " + cos + ". Check if it exists");
+			throw_with_trace(std::runtime_error("At least task " + tasks[i] + " could not be assigned to COS " + cos + ". Check if it exists"));
 	}
 }
 
@@ -207,7 +207,7 @@ void cos_delete(string cos)
 {
 	string path = string(ROOT) + "/" + cos;
 	if (!fs::exists(path))
-		throw std::runtime_error("The COS " + cos + " does not exist");
+		throw_with_trace(std::runtime_error("The COS " + cos + " does not exist"));
 
 	cos_reset_tasks(cos);
 

@@ -61,12 +61,12 @@ void pcm_build_event(const char *event_str, EventSelectRegister &reg, CoreEvent 
 			else if (sscanf(subtoken,"name=%255s",event.name) == 1)
 			{}
 			else
-				throw std::runtime_error(std::string("Event '") + subtoken + "' is not supported. See the list of supported events");
+				throw_with_trace(std::runtime_error(std::string("Event '") + subtoken + "' is not supported. See the list of supported events"));
 		}
 	}
 	event.value = reg.value;
 	if (strlen(event.name) == 0)
-		throw std::runtime_error(std::string("Event '") + event_str + "' has no name field, which is required");
+		throw_with_trace(std::runtime_error(std::string("Event '") + event_str + "' has no name field, which is required"));
 }
 
 

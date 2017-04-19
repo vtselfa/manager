@@ -8,6 +8,7 @@
 #include <boost/log/support/date_time.hpp>
 
 #include "log.hpp"
+#include "throw-with-trace.hpp"
 
 
 namespace logging = boost::log;
@@ -39,7 +40,7 @@ namespace general_log
 			std::string allowed;
 			for (auto const &s : strings)
 				allowed += s + " ";
-			throw std::runtime_error("The allowed log levels are: " + allowed);
+			throw_with_trace(std::runtime_error("The allowed log levels are: " + allowed));
 		}
 		return static_cast<SeverityLevel>(level);
 	}

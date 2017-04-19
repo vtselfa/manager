@@ -6,6 +6,7 @@
 
 #include "intel-pcm/cpucounters.h"
 #include "stats.hpp"
+#include "throw-with-trace.hpp"
 
 
 // Prototipes
@@ -66,13 +67,13 @@ class PerfCountMon
 				break;
 
 			case PCM::MSRAccessDenied:
-				throw std::runtime_error("Access to PMU denied: No MSR or PCI CFG space access");
+				throw_with_trace(std::runtime_error("Access to PMU denied: No MSR or PCI CFG space access"));
 
 			case PCM::PMUBusy:
-				throw std::runtime_error("Access to PMU denied: The Performance Monitoring Unit is occupied by another application");
+				throw_with_trace(std::runtime_error("Access to PMU denied: The Performance Monitoring Unit is occupied by another application"));
 
 			default:
-				throw std::runtime_error("Access to PMU denied: unknown error)");
+				throw_with_trace(std::runtime_error("Access to PMU denied: unknown error)"));
 		}
 	}
 
@@ -85,7 +86,7 @@ class PerfCountMon
 		PCM::ExtendedCustomCoreEventDescription conf;
 
 		if (str_events.size() > MAX_EVENTS)
-			throw std::runtime_error("At most " + std::to_string(MAX_EVENTS) + " events are allowed");
+			throw_with_trace(std::runtime_error("At most " + std::to_string(MAX_EVENTS) + " events are allowed"));
 
 		// Build events
 		for (size_t i = 0; i < str_events.size(); i++)
@@ -144,7 +145,7 @@ class PerfCountMon
 		for (const auto &core : cores)
 		{
 			if (!m->isCoreOnline(core))
-				throw std::runtime_error("Core " + std::to_string(core) + " is not online");
+				throw_with_trace(std::runtime_error("Core " + std::to_string(core) + " is not online"));
 
 			Measurement m =
 			{

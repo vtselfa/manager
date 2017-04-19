@@ -23,12 +23,12 @@ double Point::distance(const Point &o) const
 
 void Cluster::addPoint(const Point *p)
 {
-	if (p== NULL)
-		throw std::runtime_error("Cannot add a NULL Point pointer to cluster");
+	if (p == NULL)
+		throw_with_trace(std::runtime_error("Cannot add a NULL Point pointer to cluster"));
 	if (points.count(p))
-		throw std::runtime_error("The point with id {} alredy exists in the cluster"_format(p->id));
+		throw_with_trace(std::runtime_error("The point with id {} alredy exists in the cluster"_format(p->id)));
 	if (p->values.size() != centroid.size())
-		throw std::runtime_error("The point with id {} is {}-dimensional, while the cluster is {}-dimensional"_format(p->id, p->values.size(), centroid.size()));
+		throw_with_trace(std::runtime_error("The point with id {} is {}-dimensional, while the cluster is {}-dimensional"_format(p->id, p->values.size(), centroid.size())));
 	points.insert(p);
 }
 
@@ -36,9 +36,9 @@ void Cluster::addPoint(const Point *p)
 void Cluster::removePoint(const Point *p)
 {
 	if (p == NULL)
-		throw std::runtime_error("Cannot remove a NULL Point pointer from the cluster");
+		throw_with_trace(std::runtime_error("Cannot remove a NULL Point pointer from the cluster"));
 	if (points.count(p) == 0)
-		throw std::runtime_error("The point {:#x} is not in the cluster"_format((void *) p));
+		throw_with_trace(std::runtime_error("The point {:#x} is not in the cluster"_format((void *) p)));
 	points.erase(p);
 }
 
@@ -81,7 +81,7 @@ std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 {
 	assert(points.size() != 0);
 	if (points.size() == 0)
-		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
+		throw_with_trace(std::runtime_error("Cannot compute the pairwise distance if the cluster is empty"));
 	auto result = std::vector<P2PDist>();
 	for(const auto &q : points)
 	{
@@ -259,7 +259,7 @@ std::string Cluster::to_string() const
 int KMeans::nearestCluster(const std::vector<Cluster> &clusters, const Point &point)
 {
 	if (clusters.size() == 0)
-		throw std::runtime_error("No clusters provided");
+		throw_with_trace(std::runtime_error("No clusters provided"));
 
 	int cluster = 0;
 	double min_dist = std::numeric_limits<double>::infinity();
@@ -439,7 +439,7 @@ size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &poin
 		else if (eval_clusters == EvalClusters::silhouette)
 			result = silhouette(clusters);
 		else
-			throw std::runtime_error("Unknown eval_clusters algorithm");
+			throw_with_trace(std::runtime_error("Unknown eval_clusters algorithm"));
 		LOGDEB("k {} has a score of {}"_format(k, result));
 		if (result > best_result)
 		{

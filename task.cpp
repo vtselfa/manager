@@ -13,6 +13,7 @@
 
 #include "log.hpp"
 #include "task.hpp"
+#include "throw-with-trace.hpp"
 
 
 namespace acc = boost::accumulators;
@@ -35,7 +36,7 @@ void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_ba
 		auto &task = tasklist[i];
 		task.rundir = rundir_base + "/" + std::to_string(i) + "-" + task.executable;
 		if (fs::exists(task.rundir))
-			throw std::runtime_error("The rundir '" + task.rundir + "' already exists");
+			throw_with_trace(std::runtime_error("The rundir '" + task.rundir + "' already exists"));
 	}
 }
 
@@ -47,7 +48,7 @@ void task_create_rundir(const Task &task)
 		dir_copy(task.skel, task.rundir);
 	else
 		if (!fs::create_directories(task.rundir))
-			throw std::runtime_error("Could not create rundir directory " + task.rundir);
+			throw_with_trace(std::runtime_error("Could not create rundir directory " + task.rundir));
 
 }
 
@@ -65,12 +66,12 @@ void task_pause(const Task &task)
 	int status;
 
 	if (pid <= 1)
-		throw std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs");
+		throw_with_trace(std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs"));
 
 	kill(pid, SIGSTOP); // Stop child process
 	waitpid(pid, &status, WUNTRACED); // Wait until it stops
 	if (WIFEXITED(status))
-		throw std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status)));
+		throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 }
 
 
@@ -86,11 +87,11 @@ void tasks_pause(const std::vector<Task> &tasklist)
 		int status;
 
 		if (pid <= 1)
-			throw std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs");
+			throw_with_trace(std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs"));
 
 		waitpid(pid, &status, WUNTRACED); // Ensure it stopt
 		if (WIFEXITED(status))
-			throw std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status)));
+			throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 	}
 }
 
@@ -107,11 +108,11 @@ void tasks_resume(const std::vector<Task> &tasklist)
 		int status;
 
 		if (pid <= 1)
-			throw std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs");
+			throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
 
 		waitpid(pid, &status, WCONTINUED); // Ensure it resumed
 		if (WIFEXITED(status))
-			throw std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status)));
+			throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 	}
 }
 
@@ -123,7 +124,7 @@ void task_execute(Task &task)
 	char **argv;
 
 	if (!g_shell_parse_argv(task.cmd.c_str(), &argc, &argv, NULL))
-		throw std::runtime_error("Could not parse commandline '" + task.cmd + "'");
+		throw_with_trace(std::runtime_error("Could not parse commandline '" + task.cmd + "'"));
 
 	pid_t pid = fork();
 	switch (pid) {
@@ -202,7 +203,7 @@ void task_execute(Task &task)
 
 			// Error
 		case -1:
-			throw std::runtime_error("Failed to start program '" + task.cmd + "'");
+			throw_with_trace(std::runtime_error("Failed to start program '" + task.cmd + "'"));
 
 			// Parent
 		default:
@@ -221,13 +222,13 @@ void task_kill(Task &task)
 	if (pid > 1) // Never send kill to PID 0 or 1...
 	{
 		if (kill(pid, SIGKILL) < 0)
-			throw std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno));
+			throw_with_trace(std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno)));
 		waitpid(pid, NULL, 0); // Wait until it exits...
 		task.pid = 0;
 	}
 	else
 	{
-		throw std::runtime_error("Tried to kill pid " + to_string(pid) + ", check for bugs");
+		throw_with_trace(std::runtime_error("Tried to kill pid " + to_string(pid) + ", check for bugs"));
 	}
 }
 

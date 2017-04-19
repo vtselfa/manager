@@ -3,8 +3,9 @@
 #include <thread>
 
 #include <boost/program_options.hpp>
-#include <yaml-cpp/yaml.h>
+#include <boost/stacktrace.hpp>
 #include <fmt/format.h>
+#include <yaml-cpp/yaml.h>
 
 #include "cat-policy.hpp"
 #include "common.hpp"
@@ -74,9 +75,9 @@ void loop(
 		std::ostream &total_out)
 {
 	if (time_int_us <= 0)
-		throw std::runtime_error("Interval time must be positive and greater than 0");
+		throw_with_trace(std::runtime_error("Interval time must be positive and greater than 0"));
 	if (max_int <= 0)
-		throw std::runtime_error("Max time must be positive and greater than 0");
+		throw_with_trace(std::runtime_error("Max time must be positive and greater than 0"));
 
 	// For adjusting the time sleeping
 	uint64_t adj_delay_us = time_int_us;
@@ -393,7 +394,11 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		LOGFAT("Error reading config file '" + config_file + "': " + e.what());
+		const auto st = boost::get_error_info<traced>(e);
+		if (st)
+			LOGFAT("Error reading config file '" + config_file + "': " + e.what() << std::endl << *st) ;
+		else
+			LOGFAT("Error reading config file '" + config_file + "': " + e.what()) ;
 	}
 
 	try
@@ -406,7 +411,11 @@ int main(int argc, char *argv[])
 	}
 	catch (const std::exception &e)
 	{
-		LOGFAT(e.what());
+		const auto st = boost::get_error_info<traced>(e);
+		if (st)
+			LOGFAT(e.what() << std::endl << *st);
+		else
+			LOGFAT(e.what());
 	}
 
 	try
@@ -445,7 +454,11 @@ int main(int argc, char *argv[])
 	}
 	catch(const std::exception &e)
 	{
-		LOGERR(e.what());
+		const auto st = boost::get_error_info<traced>(e);
+		if (st)
+			LOGERR(e.what() << std::endl << *st);
+		else
+			LOGERR(e.what());
 		clean_and_die(tasklist, catpol->get_cat());
 	}
 }

@@ -24,7 +24,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	YAML::Node policy = config["cat_policy"];
 
 	if (!policy["kind"])
-		throw std::runtime_error("The CAT policy needs a 'kind' field");
+		throw_with_trace(std::runtime_error("The CAT policy needs a 'kind' field"));
 	string kind = policy["kind"].as<string>();
 
 	if (kind == "none")
@@ -37,7 +37,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		// Check that required fields exist
 		for (string field : {"every", "cos"})
 			if (!policy[field])
-				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
 
 		// Read fields
 		uint64_t every = policy["every"].as<uint64_t>();
@@ -45,7 +45,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		for (const auto &node : policy["cos"])
 			masks.push_back(node.as<uint64_t>());
 		if (masks.size() <= 2)
-			throw std::runtime_error("The '" + kind + "' CAT policy needs at least two COS");
+			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
 
 		return std::make_shared<cat::policy::Slowfirst>(every, masks);
 	}
@@ -55,7 +55,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		// Check that required fields exist
 		for (string field : {"every", "cos", "num_clusters"})
 			if (!policy[field])
-				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
 
 		// Read fields
 		uint64_t every = policy["every"].as<uint64_t>();
@@ -64,7 +64,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		for (const auto &node : policy["cos"])
 			masks.push_back(node.as<uint64_t>());
 		if (masks.size() <= 2)
-			throw std::runtime_error("The '" + kind + "' CAT policy needs at least two COS");
+			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
 
 		if (kind == "sfc")
 		{
@@ -93,7 +93,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		// Check that required fields exist
 		for (string field : required)
 			if (!policy[field])
-				throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
 
 		// Check that all the fields present are allowed
 		for (const auto &node : policy)
@@ -126,7 +126,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	}
 
 	else
-		throw std::runtime_error("Unknown CAT policy: '" + kind + "'");
+		throw_with_trace(std::runtime_error("Unknown CAT policy: '" + kind + "'"));
 }
 
 
@@ -137,7 +137,7 @@ vector<Cos> config_read_cos(const YAML::Node &config)
 	auto result = vector<Cos>();
 
 	if (cos_section.Type() != YAML::NodeType::Sequence)
-		throw std::runtime_error("In the config file, the cos section must contain a sequence");
+		throw_with_trace(std::runtime_error("In the config file, the cos section must contain a sequence"));
 
 	for (size_t i = 0; i < cos_section.size(); i++)
 	{
@@ -145,7 +145,7 @@ vector<Cos> config_read_cos(const YAML::Node &config)
 
 		// Schematas are mandatory
 		if (!cos["schemata"])
-			throw std::runtime_error("Each cos must have an schemata");
+			throw_with_trace(std::runtime_error("Each cos must have an schemata"));
 		auto mask = cos["schemata"].as<uint64_t>();
 
 		// CPUs are not mandatory, but note that COS 0 will have all the CPUs by defect
@@ -175,13 +175,13 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		if (!tasks[i]["app"])
-			throw std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'");
+			throw_with_trace(std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'"));
 
 		const auto &app = tasks[i]["app"];
 
 		// Commandline
 		if (!app["cmd"])
-			throw std::runtime_error("Each task must have a cmd");
+			throw_with_trace(std::runtime_error("Each task must have a cmd"));
 		string cmd = app["cmd"].as<string>();
 
 		// Dir containing files to copy to rundir
@@ -194,7 +194,7 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 
 		// CPU affinity
 		if (!tasks[i]["cpu"])
-			throw std::runtime_error("Each task must have a cpu");
+			throw_with_trace(std::runtime_error("Each task must have a cpu"));
 		auto cpu = tasks[i]["cpu"].as<uint32_t>();
 
 		// Maximum number of instructions to execute
@@ -233,7 +233,7 @@ void config_read(const string &path, const string &overlay, vector<Task> &taskli
 	// The message outputed by YAML is not clear enough, so we test first
 	std::ifstream f(path);
 	if (!f.good())
-		throw std::runtime_error("File doesn't exist or is not readable");
+		throw_with_trace(std::runtime_error("File doesn't exist or is not readable"));
 
 	YAML::Node config = YAML::LoadFile(path);
 

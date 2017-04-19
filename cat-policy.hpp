@@ -168,7 +168,7 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 			return EvalClusters::dunn;
 		if (str == "silhouette")
 			return EvalClusters::silhouette;
-		throw std::runtime_error("Unknown eval_clusters algorithm");
+		throw_with_trace(std::runtime_error("Unknown eval_clusters algorithm"));
 	}
 };
 typedef SlowfirstClusteredOptimallyAdjusted SfCOA;

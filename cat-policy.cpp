@@ -72,8 +72,19 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
+		uint64_t l2_miss_stalls;
 		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
+		try
+		{
+			l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
+		}
+		catch (const std::exception &e)
+		{
+			std::string msg = "This policy requires the event CYCLE_ACTIVITY.STALLS_TOTAL. The events monitorized are:";
+			for (const auto &kv : task.stats_total.events)
+				msg += "\n" + kv.first;
+			throw_with_trace(std::runtime_error(msg));
+		}
 		v.push_back(std::make_pair(task.cpu, l2_miss_stalls));
 	}
 
@@ -251,7 +262,7 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 		{ "none", [](double x) -> double
 			{
 				assert(x >= 0 && x <= 1);
-				throw std::runtime_error("The 'none' model is not suposed to be called");
+				throw_with_trace(std::runtime_error("The 'none' model is not suposed to be called"));
 			}
 		},
 		{ "linear", [](double x) -> double
@@ -313,7 +324,7 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 	};
 
 	if (models.count(name) == 0)
-		throw std::runtime_error("Unwnown model '{}'"_format(name));
+		throw_with_trace(std::runtime_error("Unwnown model '{}'"_format(name)));
 
 	model = models[name];
 }
@@ -332,28 +343,31 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 	// Put data in the format KMeans expects
 	LOGDEB("Tasks:");
-	uint64_t min_stalls = -1;
-	uint64_t min_accum_stalls = -1;
 	for (const auto &task : tasklist)
 	{
-		uint64_t rmean = acc::rolling_mean(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		uint64_t sum = acc::sum(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		min_stalls = std::min(rmean, min_stalls);
-		min_accum_stalls = std::min(sum, min_accum_stalls);
-	}
+		uint64_t l3_hits;
+		uint64_t l3_misses;
+		uint64_t stalls;
+		uint64_t accum_stalls;
+		const std::string he = "MEM_LOAD_UOPS_RETIRED.L3_HIT";
+		const std::string me = "MEM_LOAD_UOPS_RETIRED.L3_MISS";
+		const std::string se = "CYCLE_ACTIVITY.STALLS_TOTAL";
+		try
+		{
+			l3_hits = acc::rolling_mean(task.stats_interval.events.at(he));
+			l3_misses = acc::rolling_mean(task.stats_interval.events.at(me));
+			stalls = acc::rolling_mean(task.stats_interval.events.at(se));
+			accum_stalls = acc::sum(task.stats_interval.events.at(se));
+		}
+		catch (const std::exception &e)
+		{
+			std::string msg = "This policy requires the events {}, {} and {}. The events monitorized are:"_format(he, me, se);
+			for (const auto &kv : task.stats_total.events)
+				msg += "\n" + kv.first;
+			throw_with_trace(std::runtime_error(msg));
+		}
 
-	for (const auto &task : tasklist)
-	{
-		// const double kp = 0;
-		// const double ki = 1;
-
-		uint64_t l2_hits = acc::rolling_mean(task.stats_interval.events.at("MEM_LOAD_UOPS_RETIRED.L3_HIT"));
-		uint64_t l2_misses = acc::rolling_mean(task.stats_interval.events.at("MEM_LOAD_UOPS_RETIRED.L3_MISS"));
-		double hr = (double) l2_hits / (double) (l2_hits + l2_misses);
-
-		uint64_t stalls = acc::rolling_mean(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		uint64_t accum_stalls = acc::sum(task.stats_interval.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-
+		double hr = (double) l3_hits / (double) (l3_hits + l3_misses);
 		double metric = accum_stalls;
 
 		double completed = task.max_instr ?
