@@ -1,30 +1,27 @@
+#include "cat.hpp"
 #include "intel-cmt-cat/lib/pqos.h"
 
-class CAT
+class CATIntel : public CAT
 {
 	const struct pqos_cpuinfo *p_cpu;
 	const struct pqos_cap *p_cap;
 	unsigned *p_sockets;
 	unsigned sock_count;
-	bool initialized;
-	bool auto_reset;
-
 
 	public:
 
-	CAT() = default;
-	CAT(bool auto_reset) : auto_reset(auto_reset) {};
+	CATIntel() = default;
+	~CATIntel() = default;
 
-	void init();
-	void cleanup();
-	void set_cos_mask(uint32_t cos, uint64_t mask, uint32_t socket=0);
-	void set_cos_cpu(uint32_t cos, uint32_t core);
+	void init() override;
+	void reset() override;
 
-	uint32_t get_cos_of_cpu(uint32_t cpu) const;
-	uint64_t get_cos_mask(uint32_t cos, uint32_t socket=0) const;
-	uint32_t get_max_num_cos() const;
+	void set_cbm(uint32_t clos, uint64_t cbm) override;
+	void add_cpu(uint32_t clos, uint32_t cpu) override;
 
-	void reset();
-	bool is_initialized() { return initialized; }
-	void print();
+	uint32_t get_clos(uint32_t cpu) const override;
+	uint64_t get_cbm(uint32_t cos) const override;
+	uint32_t get_max_closids() const override;
+
+	void print() override;
 };

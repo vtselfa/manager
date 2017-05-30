@@ -4,9 +4,14 @@
 #include <fstream>
 #include <vector>
 
+#include <boost/filesystem.hpp>
+
 
 std::ofstream open_ofstream(const std::string &path);
 std::ifstream open_ifstream(const std::string &path);
+std::ifstream open_ifstream(const boost::filesystem::path &path);
+std::ofstream open_ofstream(const boost::filesystem::path &path);
+
 std::string extract_executable_name(const std::string &cmd);
 void dir_copy(const std::string &source, const std::string &dest);
 std::string random_string(size_t length);

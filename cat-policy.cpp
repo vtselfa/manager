@@ -29,7 +29,7 @@ void Slowfirst::set_masks(const std::vector<uint64_t> &masks)
 {
 	this->masks = masks;
 	for (uint32_t i = 0; i < masks.size(); i++)
-		cat.set_cos_mask(i, masks[i]);
+		cat->set_cbm(i, masks[i]);
 }
 
 
@@ -100,7 +100,7 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 	{
 		uint32_t cos  = masks.size() - pos - 1;
 		uint32_t core = std::get<0>(v[pos]);
-		cat.set_cos_cpu(cos, core); // Assign core to COS
+		cat->add_cpu(cos, core); // Assign core to COS
 	}
 }
 
@@ -158,7 +158,7 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 		for(const auto &p : cluster.getPoints())
 		{
 			const Task &task = tasklist[p->id];
-			cat.set_cos_cpu(cos, task.cpu);
+			cat->add_cpu(cos, task.cpu);
 			task_ids += i < cluster.getPoints().size() - 1 ?
 					std::to_string(task.id) + ", ":
 					std::to_string(task.id);
@@ -352,17 +352,18 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		const std::string he = "MEM_LOAD_UOPS_RETIRED.L3_HIT";
 		const std::string me = "MEM_LOAD_UOPS_RETIRED.L3_MISS";
 		const std::string se = "CYCLE_ACTIVITY.STALLS_TOTAL";
+		const Stats &stats = task.stats_interval;
 		try
 		{
-			l3_hits = acc::rolling_mean(task.stats_interval.events.at(he));
-			l3_misses = acc::rolling_mean(task.stats_interval.events.at(me));
-			stalls = acc::rolling_mean(task.stats_interval.events.at(se));
-			accum_stalls = acc::sum(task.stats_interval.events.at(se));
+			l3_hits = acc::rolling_mean(stats.events.at(he));
+			l3_misses = acc::rolling_mean(stats.events.at(me));
+			stalls = acc::rolling_mean(stats.events.at(se));
+			accum_stalls = acc::sum(stats.events.at(se));
 		}
 		catch (const std::exception &e)
 		{
 			std::string msg = "This policy requires the events {}, {} and {}. The events monitorized are:"_format(he, me, se);
-			for (const auto &kv : task.stats_total.events)
+			for (const auto &kv : stats.events)
 				msg += "\n" + kv.first;
 			throw_with_trace(std::runtime_error(msg));
 		}
@@ -428,7 +429,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		else if (min_max)
 		{
 			LOGDEB("Make min max pairs...");
-			assert(data.size() % 2 == 0 && (data.size() / 2) <= cat.get_max_num_cos());
+			assert(data.size() % 2 == 0 && (data.size() / 2) <= cat->get_max_closids());
 			// Sort points in DESCENDING order
 			std::sort(begin(data), end(data),
 					[](const Point &p1, const Point &p2)
@@ -455,7 +456,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		else
 		{
 			LOGDEB("Try to find the optimal number of clusters...");
-			KMeans::clusterize_optimally(cat.get_max_num_cos(), data, clusters, 100, eval_clusters);
+			KMeans::clusterize_optimally(cat->get_max_closids(), data, clusters, 100, eval_clusters);
 		}
 	}
 
@@ -484,9 +485,9 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	}
 
 	// Get current CAT masks
-	masks.resize(cat.get_max_num_cos());
+	masks.resize(cat->get_max_closids());
 	for (size_t cos = 0; cos < masks.size(); cos++)
-		masks[cos] = cat.get_cos_mask(cos);
+		masks[cos] = cat->get_cbm(cos);
 
 	// Compute new masks
 	if (model.name != "none")
@@ -526,7 +527,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			for (const auto &p : clusters[c].getPoints())
 			{
 				const Task &task = tasklist[p->id];
-				cat.set_cos_cpu(c, task.cpu);
+				cat->add_cpu(c, task.cpu);
 				task_ids += std::to_string(p->id);
 				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
 				i++;

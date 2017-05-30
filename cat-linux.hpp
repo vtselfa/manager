@@ -17,26 +17,72 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#include <vector>
-#include <boost/dynamic_bitset_fwd.hpp>
+#include <cstdint>
+#include <map>
+
+#include <boost/filesystem.hpp>
+
+#include "cat.hpp"
 
 
-#define MAX_CPUS 24
-#define MAX_WAYS 20
+class CATInfo
+{
+	public:
+
+	CATInfo() = default;
+	CATInfo(const std::string &cache, uint64_t cbm_mask, uint32_t min_cbm_bits, uint32_t num_closids) :
+			cache(cache), cbm_mask(cbm_mask), min_cbm_bits(min_cbm_bits), num_closids(num_closids) {}
+
+	std::string cache;
+	uint64_t cbm_mask;
+	uint32_t min_cbm_bits;
+	uint32_t num_closids;
+};
 
 
-boost::dynamic_bitset<> cos_get_cpus(std::string cos);
-void cos_set_cpus(std::string cos, boost::dynamic_bitset<> cpus);
+class CATLinux : public CAT
+{
+	protected:
 
-boost::dynamic_bitset<> cos_get_schemata(std::string cos);
-void cos_set_schemata(std::string cos, boost::dynamic_bitset<> schemata);
+	CATInfo info;
 
-std::vector<std::string> cos_get_tasks(std::string cos);
-void cos_set_tasks(std::string cos, std::vector<std::string> tasks);
-void cos_reset_tasks(std::string cos);
+	#define FS boost::filesystem
+	void set_schemata(FS::path clos_dir, uint64_t mask);
+	void set_cpus(FS::path clos_dir, uint64_t cpu_mask);
+	void add_task(FS::path clos_dir, std::string task);
+	void remove_task(std::string task);
 
-void cos_create(std::string cos, boost::dynamic_bitset<> schemata, std::vector<std::string> tasks);
-void cos_create(std::string cos, boost::dynamic_bitset<> schemata, boost::dynamic_bitset<> cpus, std::vector<std::string> tasks = {});
-void cos_delete(std::string cos);
+	void create_clos(std::string clos);
+	void delete_clos(FS::path clos_dir);
+	void delete_all_clos();
 
-void cat_reset();
+	uint64_t get_schemata(FS::path clos_dir) const;
+	uint64_t get_cpus(FS::path clos_dir) const;
+	FS::path get_clos_dir(uint32_t cpu) const;
+	std::vector<std::string> get_tasks(FS::path clos_dir) const;
+	FS::path intel_to_linux(uint32_t clos) const;
+	std::vector<FS::path> get_clos_dirs() const;
+	const CATInfo& get_info() const { return info; };
+	#undef FS
+
+	public:
+
+	CATLinux() = default;
+
+	/* CAT API */
+	void init() override;
+	void reset() override;
+
+	void set_cbm(uint32_t clos, uint64_t cbm) override;
+	void add_cpu(uint32_t clos, uint32_t cpu) override;
+
+	uint32_t get_clos(uint32_t cpu) const override;
+	uint64_t get_cbm(uint32_t clos) const override;
+	uint32_t get_max_closids() const override;
+
+	void print() override {};
+};
+
+
+std::map<std::string, CATInfo> cat_read_info();
+

@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "cat-intel.hpp"
+#include "cat.hpp"
 #include "kmeans.hpp"
 #include "task.hpp"
 
@@ -27,15 +27,15 @@ class Base
 {
 	protected:
 
-	CAT cat;
+	std::shared_ptr<CAT> cat;
 
 	public:
 
 	Base() = default;
 
-	void set_cat(CAT cat)      { this->cat = cat; }
-	CAT& get_cat()             { return cat; }
-	const CAT& get_cat() const { return cat; }
+	void set_cat(std::shared_ptr<CAT> cat)     { this->cat = cat; }
+	std::shared_ptr<CAT> get_cat()             { return cat; }
+	const std::shared_ptr<CAT> get_cat() const { return cat; }
 
 	virtual ~Base() = default;
 

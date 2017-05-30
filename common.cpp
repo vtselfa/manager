@@ -29,6 +29,18 @@ std::ifstream open_ifstream(const std::string &path)
 }
 
 
+std::ifstream open_ifstream(const boost::filesystem::path &path)
+{
+	return open_ifstream(path.string());
+}
+
+
+std::ofstream open_ofstream(const boost::filesystem::path &path)
+{
+	return open_ofstream(path.string());
+};
+
+
 // Returns the executable basename from a commandline
 std::string extract_executable_name(const std::string &cmd)
 {

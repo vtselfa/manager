@@ -7,6 +7,8 @@
 #include <fmt/format.h>
 #include <yaml-cpp/yaml.h>
 
+#include "cat-intel.hpp"
+#include "cat-linux.hpp"
 #include "cat-policy.hpp"
 #include "common.hpp"
 #include "config.hpp"
@@ -39,25 +41,37 @@ using std::cerr;
 using std::endl;
 using fmt::literals::operator""_format;
 
+typedef std::shared_ptr<CAT> CAT_ptr_t;
 
-CAT cat_setup(const vector<Cos> &coslist, bool auto_reset);
+
+CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist);
 void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
-void clean(vector<Task> &tasklist, CAT &cat);
-[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT &cat);
+void clean(vector<Task> &tasklist, CAT_ptr_t cat);
+[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat);
 std::string program_options_to_string(const std::vector<po::option>& raw);
 
 
-CAT cat_setup(const vector<Cos> &coslist, bool auto_reset)
+CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
 {
-	auto cat = CAT(auto_reset); // If auto_reset is set CAT is reseted before and after execution
-	cat.init();
+	LOGINF("Using {} CAT"_format(kind));
+	std::shared_ptr<CAT> cat;
+	if (kind == "intel")
+	{
+		cat = std::make_shared<CATIntel>();
+	}
+	else
+	{
+		assert(kind == "linux");
+		cat = std::make_shared<CATLinux>();
+	}
+	cat->init();
 
 	for (size_t i = 0; i < coslist.size(); i++)
 	{
 		const auto &cos = coslist[i];
-		cat.set_cos_mask(i, cos.mask);
+		cat->set_cbm(i, cos.mask);
 		for (const auto &cpu : cos.cpus)
-			cat.set_cos_cpu(i, cpu);
+			cat->add_cpu(i, cpu);
 	}
 
 	return cat;
@@ -155,12 +169,11 @@ void loop(
 		if (all_completed)
 			break;
 
-		// Restart the ones that have reached their limit
-		else
-			tasks_kill_and_restart(tasklist);
-
 		// Adjust CAT according to the selected policy
 		catpol->apply(interval, tasklist);
+
+		// Restart the tasks that have reached their limit
+		tasks_kill_and_restart(tasklist);
 
 		// Adjust time with a PI controller
 		int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
@@ -185,9 +198,9 @@ void loop(
 
 
 // Leave the machine in a consistent state
-void clean(vector<Task> &tasklist, CAT &cat)
+void clean(vector<Task> &tasklist, CAT_ptr_t cat)
 {
-	cat.cleanup();
+	cat->reset();
 	pcm_cleanup();
 
 	// Try to drop privileges before killing anything
@@ -198,14 +211,14 @@ void clean(vector<Task> &tasklist, CAT &cat)
 }
 
 
-void clean_and_die(vector<Task> &tasklist, CAT &cat)
+void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat)
 {
 	LOGERR("--- PANIC, TRYING TO CLEAN ---");
 
 	try
 	{
-		if (cat.is_initialized())
-			cat.reset();
+		if (cat->is_initialized())
+			cat->reset();
 	}
 	catch (const std::exception &e)
 	{
@@ -320,10 +333,10 @@ int main(int argc, char *argv[])
 		("mi", po::value<uint32_t>()->default_value(std::numeric_limits<uint32_t>::max()), "max-intervals, maximum number of intervals.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
-		("reset-cat", po::value<bool>()->default_value(true), "reset CAT config, before and after the program execution. Note that even if this is false a CAT policy may reset the CAT config during it's normal operation.")
 		("clog-min", po::value<string>()->default_value(min_clog), "Minimum severity level to log into the console, defaults to warning")
 		("flog-min", po::value<string>()->default_value(min_flog), "Minimum severity level to log into the log file, defaults to info")
 		("log-file", po::value<string>()->default_value("manager.log"), "file used for the general application log")
+		("cat-impl", po::value<string>()->default_value("intel"), "Which implementation of CAT to use (linux or intel)")
 		;
 
 	bool option_error = false;
@@ -404,7 +417,7 @@ int main(int argc, char *argv[])
 	try
 	{
 		// Initial CAT configuration. It may be modified by the CAT policy.
-		CAT cat = cat_setup(coslist, vm["reset-cat"].as<bool>());
+		CAT_ptr_t cat = cat_setup(vm["cat-impl"].as<string>(), coslist);
 		catpol->set_cat(cat);
 
 		pcm_reset();

@@ -1,127 +1,144 @@
 #include <fstream>
 #include <iostream>
-#include <boost/dynamic_bitset.hpp>
-#include <boost/filesystem.hpp>
+
+#include <fmt/format.h>
+
+#include "cat-linux.hpp"
 #include "common.hpp"
-#include "cat.hpp"
+#include "throw-with-trace.hpp"
 
 
 #define ROOT "/sys/fs/resctrl"
-#define MAX_COS 4
+#define INFO_DIR ROOT "/info"
 
 
 namespace fs = boost::filesystem;
 
 using std::string;
 using std::vector;
-using boost::dynamic_bitset;
+using fmt::literals::operator""_format;
 
 
-/* Reads a bitset with the assigned CPUs to a COS.
- * Use . for the default COS */
-dynamic_bitset<> cos_get_cpus(string cos)
+std::map<std::string, CATInfo> cat_read_info()
 {
-	assert(cos != ""); // Use "." for the default COS
-	fs::current_path(ROOT);
-	fs::current_path(cos);
+	std::map<string, CATInfo> info;
+	for(auto &p: fs::directory_iterator(INFO_DIR))
+	{
+		string cache = fs::basename(p);
+		uint64_t cbm_mask;
+		uint32_t min_cbm_bits;
+		uint32_t num_closids;
 
-	unsigned int mask;
-	std::ifstream f = open_ifstream("cpus");
-    f >> std::hex >> mask;
-	return dynamic_bitset<>(MAX_CPUS, mask);
+		try
+		{
+			std::ifstream f;
+			f = open_ifstream(p / "cbm_mask");
+			f >> std::hex >> cbm_mask;
+			f = open_ifstream(p / "min_cbm_bits");
+			f >> min_cbm_bits;
+			f = open_ifstream(p / "num_closids");
+			f >> num_closids;
+		}
+		catch(const std::system_error &e)
+		{
+			throw_with_trace(std::runtime_error("Cannot read CAT info '{}': {}"_format(INFO_DIR, strerror(errno))));
+		}
+
+		info[cache] = CATInfo(cache, cbm_mask, min_cbm_bits, num_closids);
+	}
+	return info;
 }
 
 
-/* Reads a bitset with the assigned CPUs to a COS.
- * Use . for the default COS */
-//TODO: Reset first...
-void cos_set_cpus(string cos, dynamic_bitset<> cpus)
+void CATLinux::set_schemata(fs::path clos_dir, uint64_t mask)
 {
-	int mask = cpus.to_ulong();
-	int mask_res;
+	const std::string schemata = "{}:0={:x}"_format(info.cache, mask);
 
-	assert(cos != ""); // Use "." for the default COS
-	fs::current_path(ROOT);
-	fs::current_path(cos);
-
-	std::ofstream f = open_ofstream("cpus");
-    f << std::hex << mask << std::dec << std::endl;
-
-	mask_res = cos_get_cpus(cos).to_ulong();
-	if (mask != mask_res)
-		throw_with_trace(std::runtime_error("Could not set mask for cpus for COS " + cos));
+	try
+	{
+		std::ofstream f = open_ofstream(clos_dir / "schemata");
+		f << schemata << std::endl;
+	}
+	catch(const std::system_error &e)
+	{
+		throw_with_trace(std::runtime_error("Cannot set schemata of CLOS '{}': {}"_format(clos_dir.string(), strerror(errno))));
+	}
 }
 
 
-/* Reads a bitset with the assigned ways to a COS.
- * The minimum number of ways that can be assigned is 2.
- * Only consecutive chunks of ways can be assigned, i.e. ff0ff = bad, ffff0 = good. */
-dynamic_bitset<> cos_get_schemata(string cos)
+uint64_t CATLinux::get_schemata(fs::path clos_dir) const
 {
-	assert(cos != ""); // Use "." for the default COS
-	fs::current_path(ROOT);
-	fs::current_path(cos);
+	uint64_t schemata;
 
-	unsigned int mask;
-	std::ifstream f = open_ifstream("schemata");
-	f.ignore(std::numeric_limits<std::streamsize>::max(), '=');
-    f >> std::hex >> mask;
-	return dynamic_bitset<>(MAX_WAYS, mask);
+	try
+	{
+		std::ifstream f = open_ifstream(clos_dir / "schemata");
+		f.ignore(std::numeric_limits<std::streamsize>::max(), '=');
+		f >> std::hex >> schemata;
+	}
+	catch(const std::system_error &e)
+	{
+		throw_with_trace(std::runtime_error("Cannot get schemata of CLOS '{}': {}"_format(clos_dir.string(), strerror(errno))));
+	}
+
+	return schemata;
 }
 
 
-/* Writes a bitset with the assigned ways to a COS.
- * The minimum number of ways that can be assigned is 2.
- * Only consecutive chunks of ways can be assigned, i.e. ff0ff = bad, ffff0 = good. */
-void cos_set_schemata(string cos, dynamic_bitset<> schemata)
+void CATLinux::create_clos(std::string clos)
 {
-	const char *prefix = "L3:0=";
-	int mask = schemata.to_ulong();
-	int mask_res;
+	auto path = fs::path(ROOT) / clos;
+	if (fs::exists(path))
+		throw_with_trace(std::runtime_error("Cannot create CLOS: directory {} already exists"_format(path.string())));
 
-	if (cos == "")
-		throw_with_trace(std::runtime_error("Use '.' to refer to the COS at the base level, which doesn't seem to do anything"));
-
-	fs::current_path(ROOT);
-	fs::current_path(cos);
-
-	std::ofstream f = open_ofstream("schemata");
-    f << prefix << std::hex << mask << std::dec << std::endl;
-
-	mask_res = cos_get_schemata(cos).to_ulong();
-	if (mask != mask_res)
-		throw_with_trace(std::runtime_error("Could not set schemata mask for COS " + cos));
+	fs::create_directory(path);
 }
 
 
-/* Creates a new dir for a COS.
- * Each new dir is automatically populated with 3 files, schemata, cpus and tasks. */
-void cos_mkdir(string cos)
+void CATLinux::set_cpus(fs::path clos_dir, uint64_t cpu_mask)
 {
-	fs::current_path(ROOT);
+	std::ofstream f = open_ofstream(clos_dir / "cpus");
+	f << std::hex << cpu_mask << std::endl;
+}
 
-	int count = 0;
-	for(auto &p: fs::directory_iterator("."))
-		if (fs::is_directory(p) && p != "./info")
-			count++;
-	if (count >= MAX_COS)
-		throw_with_trace(std::runtime_error("Too many COS, the maximum is " + std::to_string(MAX_COS)));
 
-	if (fs::exists(cos))
-		throw_with_trace(std::runtime_error("COS " + cos + " already exists"));
+uint64_t CATLinux::get_cpus(fs::path clos_dir) const
+{
+	uint64_t cpu_mask;
+	std::ifstream f = open_ifstream(clos_dir / "cpus");
+	f >> std::hex >> cpu_mask;
+	return cpu_mask;
+}
 
-	fs::create_directory(cos);
+
+fs::path CATLinux::get_clos_dir(uint32_t cpu) const
+{
+	uint64_t cpu_mask = 1ULL << cpu;
+	if (get_cpus(fs::path(ROOT)) & cpu_mask)
+		return fs::path(ROOT);
+
+	for(auto &p: fs::directory_iterator(ROOT))
+		if (fs::is_directory(p) && fs::basename(p) != "info")
+			if (get_cpus(p) & cpu_mask)
+				return p;
+	throw_with_trace(std::runtime_error("CPU {} is not in any CLOS, does it exist?"));
+}
+
+
+std::vector<fs::path> CATLinux::get_clos_dirs() const
+{
+	auto result = std::vector<fs::path>();
+	for(auto &p: fs::directory_iterator(ROOT))
+		if (fs::is_directory(p) && fs::basename(p) != "info")
+			result.push_back(p);
+	return result;
 }
 
 
 /* Get the tasks assigned to a COS. */
-vector<string> cos_get_tasks(string cos)
+std::vector<std::string> CATLinux::get_tasks(fs::path clos_dir) const
 {
-	if (cos == ".")
-		throw_with_trace(std::runtime_error("There is no point in reading the tasks assigned to the default COS, check for bugs"));
-
-	string path = string(ROOT) + "/" + cos + "/tasks";
-	std::ifstream f = open_ifstream(path);
+	std::ifstream f = open_ifstream(clos_dir / "tasks");
 	vector<string> tasks;
 	string task;
 	while (f >> task)
@@ -130,129 +147,104 @@ vector<string> cos_get_tasks(string cos)
 }
 
 
-/* Remove all tasks from a COS.
- * For this, the tasks need to be written to the task list of the default COS. */
-void cos_reset_tasks(string cos)
+void CATLinux::add_task(fs::path clos_dir, std::string task)
 {
-	vector<string> tasks = cos_get_tasks(cos);
-	if (tasks.size() > 0)
-		cos_set_tasks(".", tasks);
+	std::ofstream f = open_ofstream(clos_dir / "tasks");
+	f << task << std::endl;
 }
 
 
-/* Set the tasks assigned to a COS.
- * Previously assigned tasks are removed. */
-void cos_set_tasks(string cos, vector<string> tasks)
+void CATLinux::remove_task(std::string task)
 {
-	// Remove previously assigned tasks
-	if (cos != ".")
-		cos_reset_tasks(cos);
-
-	// Assign tasks
-	string path = string(ROOT) + "/" + cos + "/tasks";
-	std::ofstream f = open_ofstream(path);
-	for (const auto &task : tasks)
-		f << task << std::endl;
-
-	// Verify it worked (there is no point in the case of the default COS)
-	if (cos != ".")
-	{
-		vector<string> tasks_res = cos_get_tasks(cos);
-		unsigned int i;
-		for (i = 0; i < tasks.size() && i < tasks_res.size(); i++)
-			if (tasks[i] != tasks_res[i])
-				break;
-		if (i != tasks.size())
-			throw_with_trace(std::runtime_error("At least task " + tasks[i] + " could not be assigned to COS " + cos + ". Check if it exists"));
-	}
-}
-
-
-/* Creates a new COS.
- * Will throw exceptions if the COS already exists, if there are too many and if for whatever reason cannot create it properly. */
-void cos_create(string cos, dynamic_bitset<> schemata, vector<string> tasks)
-{
-	// Dir
-	cos_mkdir(cos);
-
-	// Schemata
-	cos_set_schemata(cos, schemata);
-
-	// Tasks
-	cos_set_tasks(cos, tasks);
-}
-
-
-/* Creates a new COS.
- * Will throw exceptions if the COS already exists, if there are too many and if for whatever reason cannot create it properly. */
-void cos_create(string cos, dynamic_bitset<> schemata, dynamic_bitset<> cpus, vector<string> tasks)
-{
-	// Dir
-	cos_mkdir(cos);
-
-	// Schemata
-	cos_set_schemata(cos, schemata);
-
-	// CPUs
-	cos_set_cpus(cos, cpus);
-
-	// Tasks
-	cos_set_tasks(cos, tasks);
+	std::ofstream f = open_ofstream(fs::path(ROOT) / "tasks");
+	f << task << std::endl;
 }
 
 
 /* Deletes a COS.
  * Will throw if it does not exist of the deletion fails. */
-void cos_delete(string cos)
+void CATLinux::delete_clos(fs::path clos_dir)
 {
-	string path = string(ROOT) + "/" + cos;
-	if (!fs::exists(path))
-		throw_with_trace(std::runtime_error("The COS " + cos + " does not exist"));
-
-	cos_reset_tasks(cos);
-
-	// Reset schemata
-	cos_set_schemata(cos, dynamic_bitset<>(MAX_WAYS, -1ul));
-
-	// Reset cpus
-	cos_set_cpus(cos, dynamic_bitset<>(MAX_CPUS, -1ul));
-
-	// Remove
-	fs::remove(path);
+	if (!fs::exists(clos_dir))
+		throw_with_trace(std::runtime_error("The COS " + clos_dir.string() + " does not exist"));
+	fs::remove(clos_dir);
 }
 
 
 // Remove all COS
 // Since we are iterating an special filesystem we cannot trust the iterator remaining valid after a deletion
 // Therefore, first store targets and then delete them
-void cos_delete_all()
+void CATLinux::delete_all_clos()
 {
 	auto to_remove = vector<fs::path>();
 	for(const auto &p: fs::directory_iterator(ROOT))
 		if (fs::is_directory(p) && fs::basename(p) != "info")
 			to_remove.push_back(p);
 	for(const auto &p: to_remove)
-		cos_delete(fs::basename(p));
+		delete_clos(p);
 }
 
 
-void cat_reset()
+fs::path CATLinux::intel_to_linux(uint32_t clos) const
 {
-	fs::current_path(ROOT);
+	if (clos == 0)
+		return fs::path(ROOT);
+	else
+		return fs::path(ROOT) / std::to_string(clos);
+}
 
-	cos_delete_all();
 
-	// Recreate COS to reset them
-	for (int cos = 0; cos < MAX_COS; cos++)
-		cos_create(std::to_string(cos), dynamic_bitset<>(MAX_WAYS, -1ul), dynamic_bitset<>(MAX_CPUS, -1ul), {});
+void CATLinux::init()
+{
+	initialized = true;
+	auto infomap = cat_read_info();
+	info = infomap["L3"];
+	reset();
 
-	cos_delete_all();
+	for (uint32_t i = 1; i < get_max_closids(); i++)
+		create_clos(std::to_string(i)); // For compatibility with Intel pqos library...
+}
 
-	// This is just in case, but doesn't seem to do anything
 
-	// Reset schemata
-	cos_set_schemata(".", dynamic_bitset<>(MAX_WAYS, -1ul));
+void CATLinux::reset()
+{
+	delete_all_clos();
+	CATLinux::set_schemata(fs::path(ROOT), info.cbm_mask);
+}
 
-	// Reset cpus
-	cos_set_cpus(".", dynamic_bitset<>(MAX_CPUS, -1ul));
+
+void CATLinux::set_cbm(uint32_t clos, uint64_t cbm)
+{
+	set_schemata(intel_to_linux(clos), cbm);
+}
+
+
+uint64_t CATLinux::get_cbm(uint32_t clos) const
+{
+	return get_schemata(intel_to_linux(clos));
+}
+
+
+void CATLinux::add_cpu(uint32_t clos, uint32_t cpu)
+{
+	fs::path clos_dir = intel_to_linux(clos);
+	uint64_t cpu_mask = get_cpus(clos_dir);
+	cpu_mask |= (1ULL << cpu);
+	set_cpus(clos_dir, cpu_mask);
+}
+
+
+uint32_t CATLinux::get_clos(uint32_t cpu) const
+{
+	auto path = get_clos_dir(cpu);
+	if (path == fs::path(ROOT))
+		return 0;
+	string clos = fs::basename(get_clos_dir(cpu));
+	return std::stoi(clos);
+}
+
+
+uint32_t CATLinux::get_max_closids() const
+{
+	return CATLinux::info.num_closids;
 }
