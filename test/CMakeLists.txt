@@ -46,7 +46,7 @@ endmacro(add_gtest)
 add_executable(kmeans_test kmeans_test.cpp ../kmeans.cpp)
 add_gtest(kmeans_test)
 
-add_executable(cat-linux_test cat-linux_test.cpp ../cat-linux.cpp ../common.cpp)
+add_executable(cat-linux_test cat-linux_test.cpp ${CMAKE_CURRENT_BINARY_DIR}/../cat-linux.cpp ${CMAKE_CURRENT_BINARY_DIR}/../cat-intel.cpp ${CMAKE_CURRENT_BINARY_DIR}/../common.cpp)
 target_link_libraries(cat-linux_test ${CMAKE_CURRENT_BINARY_DIR}/../libcpuid/libcpuid/.libs/libcpuid.a)
 add_gtest(cat-linux_test)
 

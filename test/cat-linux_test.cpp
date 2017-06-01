@@ -7,6 +7,7 @@
 #include <libcpuid.h>
 
 #include "cat-linux.hpp"
+#include "cat-intel.hpp"
 
 
 using testing::Ge;
@@ -31,15 +32,19 @@ TEST(CPUID, Present)
 	ASSERT_TRUE(cpuid_present());
 }
 
+class CATLinuxTest : public CATLinux
+{
+	FRIEND_TEST(CATLinuxAPI, SetGetCBM);
+	FRIEND_TEST(CATLinuxAPI, Reset);
+	FRIEND_TEST(CATLinuxAPI, Init);
+	FRIEND_TEST(CATLinuxConsistency, SetCBM);
+	FRIEND_TEST(CATLinuxConsistency, AddCPU);
+	FRIEND_TEST(CATLinuxConsistency, Reset);
+};
+
 class CATLinuxAPI : public testing::Test
 {
 	protected:
-	class CATLinuxTest : public CATLinux
-	{
-		FRIEND_TEST(CATLinuxAPI, SetGetCBM);
-		FRIEND_TEST(CATLinuxAPI, Reset);
-		FRIEND_TEST(CATLinuxAPI, Init);
-	};
 
 	CATLinuxTest cat;
 	struct cpu_id_t data;
@@ -123,4 +128,85 @@ TEST_F(CATLinuxAPI, Reset)
 	auto clos_dirs = cat.get_clos_dirs();
 	ASSERT_EQ(clos_dirs.size(), 0U);
 	ASSERT_THROW(cat.set_cbm(1, cat.get_info().cbm_mask), std::runtime_error);
+}
+
+
+class CATLinuxConsistency : public testing::Test
+{
+	protected:
+
+	static CATIntel icat;
+
+	CATLinuxTest lcat;
+	struct cpu_id_t data;
+
+	static void SetUpTestCase()
+	{
+		icat = CATIntel();
+		icat.init();
+	}
+
+	virtual void SetUp() override
+	{
+		struct cpu_raw_data_t raw;
+
+		lcat = CATLinuxTest();
+		lcat.init();
+
+		ASSERT_GE(cpuid_get_raw_data(&raw), 0);
+		ASSERT_GE(cpu_identify(&raw, &data), 0);
+	}
+
+	virtual void TearDown() override
+	{
+		lcat.reset();
+		icat.reset();
+	}
+};
+CATIntel CATLinuxConsistency::icat;
+
+TEST_F(CATLinuxConsistency, SetCBM)
+{
+	auto info = lcat.get_info();
+	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
+	{
+		for (uint64_t cbm = info.cbm_mask; cbm >= ((1ULL << info.min_cbm_bits) - 1); cbm >>= 1)
+		{
+			lcat.set_cbm(clos, cbm);
+			ASSERT_EQ(icat.get_cbm(clos), cbm);
+		}
+	}
+}
+
+TEST_F(CATLinuxConsistency, AddCPU)
+{
+	uint32_t clos;
+	int32_t cpu;
+	for (clos = 0; clos < lcat.get_max_closids(); clos++)
+	{
+		for (cpu = 0; cpu < data.total_logical_cpus; cpu++)
+		{
+			lcat.add_cpu(clos, cpu);
+			ASSERT_EQ(icat.get_clos(cpu), clos);
+		}
+	}
+}
+
+TEST_F(CATLinuxConsistency, Reset)
+{
+	lcat.add_cpu(1, 0);
+	lcat.add_cpu(2, 1);
+	lcat.add_cpu(3, 2);
+	lcat.set_cbm(0, lcat.get_info().cbm_mask >> 1);
+
+	lcat.reset();
+	ASSERT_EQ(icat.get_cbm(0), lcat.get_info().cbm_mask);
+	for (int32_t cpu = 0; cpu < data.total_logical_cpus; cpu++)
+	{
+		ASSERT_EQ(icat.get_clos(cpu), 0U);
+	}
+	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
+	{
+		ASSERT_EQ(icat.get_cbm(clos), lcat.get_info().cbm_mask);
+	}
 }
