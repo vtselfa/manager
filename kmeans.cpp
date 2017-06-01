@@ -79,7 +79,6 @@ double Cluster::centroid_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 {
-	assert(points.size() != 0);
 	if (points.size() == 0)
 		throw_with_trace(std::runtime_error("Cannot compute the pairwise distance if the cluster is empty"));
 	auto result = std::vector<P2PDist>();
@@ -97,7 +96,6 @@ std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
 
 std::vector<P2PDist> Cluster::pairwise_distance() const
 {
-	assert(points.size() != 0);
 	if (points.size() == 0)
 		throw std::runtime_error("Cannot compute the pairwise distance if the cluster is empty");
 
