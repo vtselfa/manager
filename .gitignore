@@ -3,3 +3,12 @@ manager
 *.d
 *.csv
 *.log
+*.pyc
+test/CMakeCache.txt
+test/CMakeFiles/
+test/CTestTestfile.cmake
+test/Makefile
+test/Testing/
+test/*_test
+test/cmake_install.cmake
+test/gtest/
