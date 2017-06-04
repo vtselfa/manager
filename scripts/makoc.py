@@ -5,6 +5,7 @@ import yaml
 import argparse
 from mako.template import Template
 from mako.lookup import TemplateLookup
+from mako.exceptions import RichTraceback
 
 
 def main():
@@ -16,8 +17,13 @@ def main():
 
     lookup = TemplateLookup(directories=[args.lookup])
     template = Template(filename=args.template, lookup=lookup)
-    print(template.render(**args.defs))
-
+    try:
+        print(template.render(**args.defs))
+    except:
+        traceback = RichTraceback()
+        for (filename, lineno, function, line) in traceback.traceback:
+            print("File %s, line %s, in %s" % (filename, lineno, function))
+            print(line, "\n")
 
 
 if __name__ == "__main__":
