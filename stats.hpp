@@ -81,9 +81,9 @@ struct Stats
 
 std::string stats_final_header_to_string(const Stats &s, const std::string &sep);
 std::string stats_header_to_string(const Stats &s, const std::string &sep=",");
-std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep=",");
+std::string stats_to_string(const Stats &s, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep=",");
 void stats_final_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
 void stats_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
-void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval = -1ULL, const std::string &sep=",");
+void stats_print(const Stats &s, std::ostream &out, uint32_t id, const std::string &app, uint64_t interval = -1ULL, const std::string &sep=",");
 bool stats_are_wrong(const Stats &s);
 bool measurements_are_wrong(const Measurement &m);

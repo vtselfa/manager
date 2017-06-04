@@ -147,10 +147,30 @@ std::vector<std::string> CATLinux::get_tasks(fs::path clos_dir) const
 }
 
 
-void CATLinux::add_task(fs::path clos_dir, std::string task)
+void CATLinux::add_task(fs::path clos_dir, pid_t pid)
 {
-	std::ofstream f = open_ofstream(clos_dir / "tasks");
-	f << task << std::endl;
+	try
+	{
+		std::ofstream f = open_ofstream(clos_dir / "tasks");
+		f << pid << std::endl;
+	}
+	catch(const std::system_error &e)
+	{
+		throw_with_trace(std::runtime_error("Cannot write pid '{}' into '{}'"_format(pid, (clos_dir / "tasks").string())));
+	}
+}
+
+
+void CATLinux::add_task(uint32_t clos, pid_t pid)
+{
+	add_task(intel_to_linux(clos), pid);
+}
+
+
+void CATLinux::add_tasks(uint32_t clos, const std::vector<pid_t> &pids)
+{
+	for (const auto &pid : pids)
+		add_task(intel_to_linux(clos), pid);
 }
 
 
@@ -185,6 +205,13 @@ void CATLinux::delete_all_clos()
 }
 
 
+void CATLinux::create_all_clos()
+{
+	for (uint32_t i = 1; i < get_max_closids(); i++)
+		create_clos(std::to_string(i)); // For compatibility with Intel pqos library...
+}
+
+
 fs::path CATLinux::intel_to_linux(uint32_t clos) const
 {
 	if (clos == 0)
@@ -200,16 +227,21 @@ void CATLinux::init()
 	auto infomap = cat_read_info();
 	info = infomap["L3"];
 	reset();
-
-	for (uint32_t i = 1; i < get_max_closids(); i++)
-		create_clos(std::to_string(i)); // For compatibility with Intel pqos library...
+	create_all_clos();
 }
 
 
 void CATLinux::reset()
 {
 	delete_all_clos();
-	CATLinux::set_schemata(fs::path(ROOT), info.cbm_mask);
+
+	create_all_clos();
+
+	// Reset all CBMs (this should be automatic, but it's not)
+	for (uint32_t i = 0; i < get_max_closids(); i++)
+		set_cbm(i, info.cbm_mask);
+
+	delete_all_clos();
 }
 
 

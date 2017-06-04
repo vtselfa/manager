@@ -3,6 +3,7 @@
 #include <atomic>
 #include <vector>
 
+#include "cat-linux.hpp"
 #include "common.hpp"
 #include "stats.hpp"
 
@@ -14,34 +15,38 @@ struct Task
 
 	// Set on construction
 	const uint32_t id;
+	const std::string name;
 	const std::string cmd;
-	const std::string executable;  // Basename of the executable
-	uint32_t cpu;             // Allowed cpus
+	const uint32_t initial_clos;   // The CLOS this app starts mapped to
+	std::vector<uint32_t> cpus;    // Allowed cpus
 	const std::string out;         // Stdout redirection
 	const std::string in;          // Stdin redirection
 	const std::string err;         // Stderr redirection
 	const std::string skel;        // Directory containing files and folders to copy to rundir
-	const uint64_t max_instr; // Max number of instructions to execute
+	const uint64_t max_instr = 0;  // Max number of instructions to execute
 
 	std::string rundir = ""; // Set before executing the task
-	int pid       = 0;  // Set after executing the task
+	pid_t pid = 0;           // Set after executing the task
 
 	Stats stats_acumulated = Stats(); // From the start of the execution, but reseted each time it arrives to the target goal
 	Stats stats_total = Stats();      // From the start of the execution
 	Stats stats_interval   = Stats(); // Only last interval
 
 	bool limit_reached = false; // Has the instruction limit been reached?
+	bool finished = false;      // Has the application executed completely?
+
 	uint32_t completed = 0;     // Number of times it has reached the instruction limit
 	bool batch = false;         // Batch tasks do not need to be completed in order to finish the execution
 
 	Task() = delete;
-	Task(std::string cmd, uint32_t cpu, std::string out, std::string in, std::string err, std::string skel, uint64_t max_instr, bool batch) :
-		id(ID++), cmd(cmd), executable(extract_executable_name(cmd)), cpu(cpu), out(out), in(in), err(err), skel(skel), max_instr(max_instr), batch(batch) {}
+	Task(const std::string &name, const std::string &cmd, uint32_t initial_clos, const std::vector<uint32_t> &cpus, const std::string &out, const std::string &in, const std::string &err, const std::string &skel, uint64_t max_instr, bool batch) :
+		id(ID++), name(name), cmd(cmd), initial_clos(initial_clos), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instr(max_instr), batch(batch) {}
 
-	// Reset stats and limit flag
+	// Reset stats and flags
 	void reset()
 	{
 		limit_reached = false;
+		finished = false;
 		stats_acumulated = Stats();
 		stats_interval   = Stats();
 	}
@@ -57,15 +62,20 @@ enum class StatsKind
 
 
 void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base);
+void tasks_pause(std::vector<Task> &tasklist);
+void tasks_resume(const std::vector<Task> &tasklist);
+void tasks_kill_and_restart(std::vector<Task> &tasklist);
+void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat);
+std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
+
 void task_create_rundir(const Task &task);
 void task_remove_rundir(const Task &task);
-void task_pause(const Task &task);
-void tasks_pause(const std::vector<Task> &tasklist);
-void tasks_resume(const std::vector<Task> &tasklist);
+
 void task_execute(Task &task);
+void task_pause(const Task &task);
 void task_kill(Task &task);
+void task_restart(Task &task);
 void task_kill_and_restart(Task &task);
-std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
-void tasks_kill_and_restart(std::vector<Task> &tasklist);
+
 void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep = ",");
 void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep = ",");

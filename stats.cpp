@@ -71,7 +71,6 @@ Stats& Stats::accum(const Measurement &m)
 std::string stats_final_header_to_string(const Stats &s, const std::string &sep)
 {
 	std::string result =
-			"core"             + sep +
 			"app"              + sep +
 			"us"               + sep +
 			"instructions"     + sep +
@@ -102,12 +101,11 @@ std::string stats_header_to_string(const Stats &s, const std::string &sep)
 }
 
 
-std::string stats_to_string(const Stats &s, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
+std::string stats_to_string(const Stats &s, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
 {
 	std::ostringstream out;
 	if (interval != -1ULL)
-		out << interval       << sep;
-	out << cpu                << sep << std::setfill('0') << std::setw(2);
+		out << interval       << sep << std::setfill('0') << std::setw(2);
 	out << id << "_" << app   << sep;
 	out << s.us               << sep;
 	out << s.instructions     << sep;
@@ -143,9 +141,9 @@ void stats_print_header(const Stats &s, std::ostream &out, const std::string &se
 }
 
 
-void stats_print(const Stats &s, std::ostream &out, uint32_t cpu, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
+void stats_print(const Stats &s, std::ostream &out, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
 {
-	out << stats_to_string(s, cpu, id, app, interval, sep) << std::endl;
+	out << stats_to_string(s, id, app, interval, sep) << std::endl;
 }
 
 

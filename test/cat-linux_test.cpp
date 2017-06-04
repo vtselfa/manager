@@ -40,6 +40,7 @@ class CATLinuxTest : public CATLinux
 	FRIEND_TEST(CATLinuxConsistency, SetCBM);
 	FRIEND_TEST(CATLinuxConsistency, AddCPU);
 	FRIEND_TEST(CATLinuxConsistency, Reset);
+	FRIEND_TEST(CATLinuxConsistency, Init);
 };
 
 class CATLinuxAPI : public testing::Test
@@ -197,10 +198,14 @@ TEST_F(CATLinuxConsistency, Reset)
 	lcat.add_cpu(1, 0);
 	lcat.add_cpu(2, 1);
 	lcat.add_cpu(3, 2);
-	lcat.set_cbm(0, lcat.get_info().cbm_mask >> 1);
+	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
+		lcat.set_cbm(clos, lcat.get_info().cbm_mask >> 1);
 
 	lcat.reset();
-	ASSERT_EQ(icat.get_cbm(0), lcat.get_info().cbm_mask);
+
+	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
+		ASSERT_EQ(icat.get_cbm(clos), lcat.get_info().cbm_mask);
+
 	for (int32_t cpu = 0; cpu < data.total_logical_cpus; cpu++)
 	{
 		ASSERT_EQ(icat.get_clos(cpu), 0U);
@@ -208,5 +213,20 @@ TEST_F(CATLinuxConsistency, Reset)
 	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
 	{
 		ASSERT_EQ(icat.get_cbm(clos), lcat.get_info().cbm_mask);
+	}
+}
+
+TEST_F(CATLinuxConsistency, Init)
+{
+	for (uint32_t clos = 0; clos < lcat.get_max_closids(); clos++)
+	{
+		ASSERT_EQ(lcat.get_cbm(clos), lcat.get_info().cbm_mask);
+		ASSERT_EQ(icat.get_cbm(clos), lcat.get_info().cbm_mask);
+	}
+
+	for (int32_t cpu = 0; cpu < data.total_logical_cpus; cpu++)
+	{
+		ASSERT_EQ(lcat.get_clos(cpu), 0U);
+		ASSERT_EQ(icat.get_clos(cpu), 0U);
 	}
 }

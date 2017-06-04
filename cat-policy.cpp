@@ -66,7 +66,6 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 	typedef std::tuple<uint32_t, uint64_t> pair;
 	auto v = std::vector<pair>();
 
-	cat.reset();
 	check_masks(masks);
 	set_masks(masks);
 
@@ -85,7 +84,8 @@ void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &taskli
 				msg += "\n" + kv.first;
 			throw_with_trace(std::runtime_error(msg));
 		}
-		v.push_back(std::make_pair(task.cpu, l2_miss_stalls));
+		assert(task.cpus.size() == 1);
+		v.push_back(std::make_pair(task.cpus.front(), l2_miss_stalls));
 	}
 
 	// Sort in descending order by stalls
@@ -116,7 +116,7 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 	auto data = std::vector<Point>();
 	clusters.clear();
 
-	cat.reset();
+	cat->reset();
 	set_masks(masks);
 
 	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
@@ -128,7 +128,7 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 		const Task &task = tasklist[t];
 		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
 		data.push_back(Point(t, {(double) l2_miss_stalls}));
-		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {}, stalls: {:n}}}", task.id, task.executable, task.completed, l2_miss_stalls));
+		LOGDEB(fmt::format("{{id: {}, name: {}, completed: {}, stalls: {:n}}}", task.id, task.name, task.completed, l2_miss_stalls));
 	}
 
 	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), num_clusters));
@@ -158,7 +158,8 @@ void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task
 		for(const auto &p : cluster.getPoints())
 		{
 			const Task &task = tasklist[p->id];
-			cat->add_cpu(cos, task.cpu);
+			assert(task.cpus.size() == 1);
+			cat->add_cpu(cos, task.cpus.front());
 			task_ids += i < cluster.getPoints().size() - 1 ?
 					std::to_string(task.id) + ", ":
 					std::to_string(task.id);
@@ -377,7 +378,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		accum(stalls);
 
 		data.push_back(Point(task.id, {metric}));
-		LOGDEB(fmt::format("{{id: {}, executable: {}, completed: {:.2f}, metric: {}, stalls: {:n}, hr: {}}}", task.id, task.executable, completed, metric, stalls, hr));
+		LOGDEB(fmt::format("{{id: {}, name: {}, completed: {:.2f}, metric: {}, stalls: {:n}, hr: {}}}", task.id, task.name, completed, metric, stalls, hr));
 	}
 
 	if (min_stall_ratio > 0)
@@ -387,7 +388,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		if (stall_ratio < min_stall_ratio)
 		{
 			LOGDEB("Better to do nothing, since the processor is only stalled {}% of the time"_format(stall_ratio * 100));
-			cat.reset();
+			cat->reset();
 			return;
 		}
 	}
@@ -527,7 +528,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			for (const auto &p : clusters[c].getPoints())
 			{
 				const Task &task = tasklist[p->id];
-				cat->add_cpu(c, task.cpu);
+				assert(task.cpus.size() == 1);
+				cat->add_cpu(c, task.cpus.front());
 				task_ids += std::to_string(p->id);
 				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
 				i++;

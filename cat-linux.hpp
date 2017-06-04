@@ -49,12 +49,13 @@ class CATLinux : public CAT
 	#define FS boost::filesystem
 	void set_schemata(FS::path clos_dir, uint64_t mask);
 	void set_cpus(FS::path clos_dir, uint64_t cpu_mask);
-	void add_task(FS::path clos_dir, std::string task);
+	void add_task(FS::path clos_dir, pid_t pid);
 	void remove_task(std::string task);
 
 	void create_clos(std::string clos);
 	void delete_clos(FS::path clos_dir);
 	void delete_all_clos();
+	void create_all_clos();
 
 	uint64_t get_schemata(FS::path clos_dir) const;
 	uint64_t get_cpus(FS::path clos_dir) const;
@@ -81,6 +82,10 @@ class CATLinux : public CAT
 	uint32_t get_max_closids() const override;
 
 	void print() override {};
+
+	/* CAT Linux API */
+	void add_task(uint32_t clos, pid_t pid);
+	void add_tasks(uint32_t clos, const std::vector<pid_t> &pids);
 };
 
 

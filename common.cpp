@@ -124,8 +124,12 @@ void drop_privileges()
 }
 
 
-void set_cpu_affinity(std::vector<uint32_t> cpus, int pid)
+void set_cpu_affinity(std::vector<uint32_t> cpus, pid_t pid)
 {
+	// All cpus allowed
+	if (cpus.size() == 0)
+		return;
+
 	// Set CPU affinity
 	cpu_set_t mask;
 	CPU_ZERO(&mask);

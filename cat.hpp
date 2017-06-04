@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 
 class CAT
@@ -45,3 +46,5 @@ class CAT
 
 	virtual void print() = 0;
 };
+
+typedef std::shared_ptr<CAT> cat_ptr_t;

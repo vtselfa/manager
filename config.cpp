@@ -1,8 +1,11 @@
 #include <iostream>
+#include <map>
 
+#include <boost/algorithm/string/replace.hpp>
 #include <yaml-cpp/yaml.h>
 #include <fmt/format.h>
 
+#include "cat-linux-policy.hpp"
 #include "config.hpp"
 #include "log.hpp"
 
@@ -125,6 +128,26 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters, cluster_sizes, min_max);
 	}
 
+	else if (kind == "sfl" )
+	{
+		LOGINF("Using SFL CAT policy");
+
+		// Check that required fields exist
+		for (string field : {"every", "cos"})
+			if (!policy[field])
+				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
+
+		// Read fields
+		uint64_t every = policy["every"].as<uint64_t>();
+		auto masks = vector<uint64_t>();
+		for (const auto &node : policy["cos"])
+			masks.push_back(node.as<uint64_t>());
+		if (masks.size() <= 2)
+			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
+
+		return std::make_shared<cat::policy::SFL>(every, masks);
+	}
+
 	else
 		throw_with_trace(std::runtime_error("Unknown CAT policy: '" + kind + "'"));
 }
@@ -179,10 +202,13 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 
 		const auto &app = tasks[i]["app"];
 
-		// Commandline
+		// Commandline and name
 		if (!app["cmd"])
 			throw_with_trace(std::runtime_error("Each task must have a cmd"));
 		string cmd = app["cmd"].as<string>();
+
+		// Name defaults to the name of the executable if not provided
+		string name = app["name"] ? app["name"].as<string>() : extract_executable_name(cmd);
 
 		// Dir containing files to copy to rundir
 		string skel = app["skel"] ? app["skel"].as<string>() : "";
@@ -193,16 +219,49 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		string error = app["stderr"] ? app["stderr"].as<string>() : "err";
 
 		// CPU affinity
-		if (!tasks[i]["cpu"])
-			throw_with_trace(std::runtime_error("Each task must have a cpu"));
-		auto cpu = tasks[i]["cpu"].as<uint32_t>();
+		auto cpus = vector<uint32_t>();
+		if (tasks[i]["cpu"])
+		{
+			auto node = tasks[i]["cpu"];
+			assert(node.IsScalar() || node.IsSequence());
+			if (node.IsScalar())
+				cpus = {node.as<decltype (cpus)::value_type>()};
+			else
+				cpus = node.as<decltype(cpus)>();
+		}
+
+		// Initial CLOS
+		uint32_t initial_clos = tasks[i]["initial_clos"] ? tasks[i]["initial_clos"].as<decltype(initial_clos)>() : 0;
+		LOGINF("Initial CLOS {}"_format(initial_clos));
+
+		// String to string replacement, a la C preprocesor, in the 'cmd' option
+		auto vars = std::map<string, string>();
+		if (tasks[i]["define"])
+		{
+			auto node = tasks[i]["define"];
+			try
+			{
+				vars = node.as<decltype(vars)>();
+			}
+			catch(const std::exception &e)
+			{
+				throw_with_trace(std::runtime_error("The option 'define' should contain a string to string mapping"));
+			}
+
+			for (auto it = vars.begin(); it != vars.end(); ++it)
+			{
+				string key = it->first;
+				string value = it->second;
+				boost::replace_all(cmd, key, value);
+			}
+		}
 
 		// Maximum number of instructions to execute
 		uint64_t max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : -1ULL;
 
 		bool batch = tasks[i]["batch"] ? tasks[i]["batch"].as<bool>() : false;
 
-		result.push_back(Task(cmd, cpu, output, input, error, skel, max_instr, batch));
+		result.push_back(Task(name, cmd, initial_clos, cpus, output, input, error, skel, max_instr, batch));
 	}
 	return result;
 }

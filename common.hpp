@@ -16,7 +16,7 @@ std::string extract_executable_name(const std::string &cmd);
 void dir_copy(const std::string &source, const std::string &dest);
 std::string random_string(size_t length);
 void drop_privileges();
-void set_cpu_affinity(std::vector<uint32_t> cpus, int pid=0);
+void set_cpu_affinity(std::vector<uint32_t> cpus, pid_t pid=0);
 
 // Measure the time the passed callable object consumes
 template<typename TimeT = std::chrono::milliseconds>

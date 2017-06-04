@@ -7,7 +7,7 @@ CXXFLAGS += -Wall -g -O0 -std=c++14
 LIBS = -lpthread -lrt -lboost_system -lboost_log -lboost_log_setup -lboost_thread -lboost_filesystem -lyaml-cpp -lpqos -lboost_program_options -lglib-2.0 -lpcm -lfmt -ldl -lbacktrace
 
 
-SRCS = cat-intel.cpp cat-linux.cpp cat-policy.cpp common.cpp config.cpp events-intel.cpp log.cpp manager.cpp kmeans.cpp stats.cpp task.cpp
+SRCS = cat-intel.cpp cat-linux.cpp cat-policy.cpp cat-linux-policy.cpp common.cpp config.cpp events-intel.cpp log.cpp manager.cpp kmeans.cpp stats.cpp task.cpp
 
 
 manager: $(SRCS:.cpp=.o)

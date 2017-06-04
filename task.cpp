@@ -1,6 +1,8 @@
 #include <iomanip>
 #include <iostream>
+#include <queue>
 #include <sstream>
+#include <vector>
 
 #include <sched.h>
 #include <signal.h>
@@ -9,6 +11,7 @@
 #include <sys/wait.h>
 
 #include <boost/filesystem.hpp>
+#include <fmt/format.h>
 #include <glib.h>
 
 #include "log.hpp"
@@ -23,6 +26,7 @@ using std::to_string;
 using std::string;
 using std::cerr;
 using std::endl;
+using fmt::literals::operator""_format;
 
 
 // Init static atribute
@@ -34,7 +38,7 @@ void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_ba
 	for (size_t i = 0; i < tasklist.size(); i++)
 	{
 		auto &task = tasklist[i];
-		task.rundir = rundir_base + "/" + std::to_string(i) + "-" + task.executable;
+		task.rundir = rundir_base + "/" + std::to_string(i) + "-" + task.name;
 		if (fs::exists(task.rundir))
 			throw_with_trace(std::runtime_error("The rundir '" + task.rundir + "' already exists"));
 	}
@@ -62,7 +66,7 @@ void task_remove_rundir(const Task &task)
 // Pause task
 void task_pause(const Task &task)
 {
-	int pid = task.pid;
+	pid_t pid = task.pid;
 	int status;
 
 	if (pid <= 1)
@@ -76,14 +80,14 @@ void task_pause(const Task &task)
 
 
 // Pause multiple tasks
-void tasks_pause(const std::vector<Task> &tasklist)
+void tasks_pause(std::vector<Task> &tasklist)
 {
 	for (const auto &task : tasklist)
 		kill(task.pid, SIGSTOP); // Stop process
 
-	for (const auto &task : tasklist)
+	for (auto &task : tasklist)
 	{
-		int pid = task.pid;
+		pid_t pid = task.pid;
 		int status;
 
 		if (pid <= 1)
@@ -91,7 +95,18 @@ void tasks_pause(const std::vector<Task> &tasklist)
 
 		waitpid(pid, &status, WUNTRACED); // Ensure it stopt
 		if (WIFEXITED(status))
-			throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
+		{
+			if (status == 0)
+			{
+				LOGINF("Task {}:{} with pid {} exited with status '{}'"_format(task.id, task.name, task.pid, status));
+				task.completed++;
+				task.finished = true;
+			}
+			else
+			{
+				throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
+			}
+		}
 	}
 }
 
@@ -104,7 +119,7 @@ void tasks_resume(const std::vector<Task> &tasklist)
 
 	for (const auto &task : tasklist)
 	{
-		int pid = task.pid;
+		pid_t pid = task.pid;
 		int status;
 
 		if (pid <= 1)
@@ -134,7 +149,7 @@ void task_execute(Task &task)
 			// Set CPU affinity
 			try
 			{
-				set_cpu_affinity({task.cpu});
+				set_cpu_affinity(task.cpus);
 			}
 			catch (const std::exception &e)
 			{
@@ -218,12 +233,22 @@ void task_execute(Task &task)
 
 void task_kill(Task &task)
 {
-	int pid = task.pid;
+	pid_t pid = task.pid;
+	LOGINF("Killing task {}:{}"_format(task.id, task.name));
 	if (pid > 1) // Never send kill to PID 0 or 1...
 	{
-		if (kill(pid, SIGKILL) < 0)
-			throw_with_trace(std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno)));
-		waitpid(pid, NULL, 0); // Wait until it exits...
+		// Already dead
+		if (task.finished)
+		{
+			LOGINF("Task {}:{} with pid {} was already dead"_format(task.id, task.name, task.pid));
+		}
+		// Kill it
+		else
+		{
+			if (kill(pid, SIGKILL) < 0)
+				throw_with_trace(std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno)));
+			waitpid(pid, NULL, 0); // Wait until it exits...
+		}
 		task.pid = 0;
 	}
 	else
@@ -234,9 +259,9 @@ void task_kill(Task &task)
 
 
 // Kill and restart a task
-void task_kill_and_restart(Task &task)
+void task_restart(Task &task)
 {
-	task_kill(task);
+	LOGINF("Restarting task {}:{}"_format(task.id, task.name));
 	task.reset();
 	task_remove_rundir(task);
 	task_execute(task);
@@ -247,7 +272,12 @@ std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist)
 {
 	auto res = std::vector<uint32_t>();
 	for (const auto &task : tasklist)
-		res.push_back(task.cpu);
+	{
+		assert(task.cpus.size() > 0);
+		if (task.cpus.size() != 1)
+			LOGWAR("Ignoring all cpus but the first");
+		res.push_back(task.cpus.front());
+	}
 	return res;
 }
 
@@ -256,8 +286,17 @@ std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist)
 void tasks_kill_and_restart(std::vector<Task> &tasklist)
 {
 	for (auto &task : tasklist)
+	{
 		if (task.limit_reached)
-			task_kill_and_restart(task);
+		{
+			task_kill(task);
+			task_restart(task);
+		}
+		else if (task.finished)
+		{
+			task_restart(task);
+		}
+	}
 }
 
 
@@ -273,9 +312,8 @@ void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostre
 	else
 		LOGFAT("Unknown stats kind");
 
-	out << interval           << sep;
-	out << t.cpu              << sep << std::setfill('0') << std::setw(2);
-	out << t.id << "_" << t.executable << sep;
+	out << interval << sep << std::setfill('0') << std::setw(2);
+	out << t.id << "_" << t.name << sep;
 
 	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
 		out << (t.max_instr ? (double) t.stats_total.instructions / (double) t.max_instr : 0) << sep;
@@ -306,7 +344,6 @@ void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostre
 void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep)
 {
 	out << "interval" << sep;
-	out << "core" << sep;
 	out << "app" << sep;
 
 	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
@@ -333,4 +370,32 @@ void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, co
 	}
 
 	out << std::endl;
+}
+
+
+void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat)
+{
+	/* Mapping a task to a CLOS requires Linux CAT, it is not supported by Intel CAT.
+	 * Therefore, if the feature is used, we have to check that the pointer is valid. */
+	bool initial_clos_used = false;
+	for (const auto &task : tasklist)
+	{
+		if (task.initial_clos)
+		{
+			initial_clos_used = true;
+			break;
+		}
+	}
+
+	if (!initial_clos_used)
+		return;
+
+	if (!cat)
+		throw_with_trace(std::runtime_error("Invalid CAT pointer: Ensure that you are using the Linux CAT implementation"));
+
+	for (const auto &task : tasklist)
+	{
+		LOGINF("Map task {}:{} with PID {} to CLOS {}"_format(task.id, task.name, task.pid, task.initial_clos));
+		cat->add_task(task.initial_clos, task.pid);
+	}
 }

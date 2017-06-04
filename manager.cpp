@@ -136,7 +136,7 @@ void loop(
 			if (measurements_are_wrong(measurements[i]) && task.stats_acumulated.instructions > 0)
 			{
 				LOGWAR("The results for the interval " << interval << " seem wrong, they will be replaced with the values from the previous interval:");
-				LOGWAR(stats_to_string(task.stats_interval, task.cpu, task.id, task.executable,  interval - 1, " "));
+				LOGWAR(stats_to_string(task.stats_interval, task.id, task.name,  interval - 1, " "));
 				measurements[i] = last_measurements[i];
 			}
 
@@ -150,17 +150,19 @@ void loop(
 			{
 				task.limit_reached = true;
 				task.completed++;
-
-				// It's the first time it reaches the limit
-				// Print acumulated stats
-				if (task.completed == 1)
-					task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
 			}
 
 			// If any non-batch task is not completed then we don't finish
 			if (!task.completed && !task.batch)
 				all_completed = false;
 
+			// It's the first time it finishes or reaches the instruction limit
+			// Print acumulated stats until this point
+			if (task.completed == 1)
+			{
+				if (task.limit_reached || task.finished)
+					task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
+			}
 			// Print interval stats
 			task_stats_print(task, StatsKind::interval, interval, out);
 		}
@@ -204,10 +206,23 @@ void clean(vector<Task> &tasklist, CAT_ptr_t cat)
 	pcm_cleanup();
 
 	// Try to drop privileges before killing anything
+	LOGINF("Dropping privileges...");
 	drop_privileges();
 
-	for (auto &task : tasklist)
-		task_kill(task);
+	LOGINF("Killing tasks...");
+	try
+	{
+		for (auto &task : tasklist)
+			task_kill(task);
+	}
+	catch(const std::exception &e)
+	{
+		const auto st = boost::get_error_info<traced>(e);
+		if (st)
+			LOGERR(e.what() << std::endl << *st);
+		else
+			LOGERR(e.what());
+	}
 }
 
 
@@ -391,6 +406,7 @@ int main(int argc, char *argv[])
 	// Read config
 	auto tasklist = vector<Task>();
 	auto coslist = vector<Cos>();
+	CAT_ptr_t cat;
 	auto catpol = std::make_shared<cat::policy::Base>(); // We want to use polimorfism, so we need a pointer
 	string config_file;
 	try
@@ -417,7 +433,7 @@ int main(int argc, char *argv[])
 	try
 	{
 		// Initial CAT configuration. It may be modified by the CAT policy.
-		CAT_ptr_t cat = cat_setup(vm["cat-impl"].as<string>(), coslist);
+		cat = cat_setup(vm["cat-impl"].as<string>(), coslist);
 		catpol->set_cat(cat);
 
 		pcm_reset();
@@ -442,11 +458,15 @@ int main(int argc, char *argv[])
 		LOGINF("Launching and pausing tasks");
 		for (auto &task : tasklist)
 			task_execute(task);
+		tasks_map_to_initial_clos(tasklist, std::dynamic_pointer_cast<CATLinux>(cat));
 		LOGINF("Tasks ready");
 
 		// Start doing things
 		LOGINF("Start main loop");
 		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
+
+		// Kill tasks, reset CAT, performance monitors, etc...
+		clean(tasklist, catpol->get_cat());
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.
@@ -461,9 +481,6 @@ int main(int argc, char *argv[])
 			auto o = total_out.get();
 			cout << dynamic_cast<std::stringstream *>(o)->str();
 		}
-
-		// Kill tasks, reset CAT, performance monitors, etc...
-		clean(tasklist, catpol->get_cat());
 	}
 	catch(const std::exception &e)
 	{
