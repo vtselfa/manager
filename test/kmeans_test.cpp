@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -34,9 +35,9 @@ TEST_F(PointTest, DistanceItself)
 
 TEST_F(PointTest, DistanceOther)
 {
-	Point p1 = Point(0, {0, 0, 0});
-	Point p2 = Point(0, {0, 0, 3.45});
-	Point p3 = Point(0, {0, 1, 1});
+	auto p1 = Point(0, {0, 0, 0});
+	auto p2 = Point(0, {0, 0, 3.45});
+	auto p3 = Point(0, {0, 1, 1});
 
 	EXPECT_EQ(p1.distance(p2), 3.45);
 	EXPECT_EQ(p1.distance(p3), std::sqrt(2));
@@ -66,10 +67,10 @@ TEST_F(ClusterTest, Add)
 {
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
-	auto p1 = Point(0, {1, 1});
+	auto p1 = std::make_shared<Point>(0, std::vector<double>{1, 1});
 
 	EXPECT_EQ(c.getPoints().size(), 0U);
-	c.addPoint(&p1);
+	c.addPoint(p1);
 	EXPECT_EQ(c.getPoints().size(), 1U); // The cluster should have a point now
 }
 
@@ -77,12 +78,12 @@ TEST_F(ClusterTest, SetCentroid)
 {
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
-	auto p1 = Point(0, {1, 1, 1});
+	auto p1 = std::make_shared<Point>(0, std::vector<double>{1, 1, 1});
 
 	ASSERT_THROW(c.set_centroid({}), std::runtime_error);
 	c.set_centroid({1,2,3});
 	ASSERT_EQ(c.getCentroid().size(), 3U);
-	c.addPoint(&p1);
+	c.addPoint(p1);
 	ASSERT_THROW(c.set_centroid(values), std::runtime_error);
 }
 
@@ -90,10 +91,10 @@ TEST_F(ClusterTest, Remove)
 {
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
-	auto p1 = Point(0, {1, 1});
+	auto p1 = std::make_shared<Point>(0, std::vector<double>{1, 1});
 
-	c.addPoint(&p1);
-	c.removePoint(&p1);
+	c.addPoint(p1);
+	c.removePoint(p1);
 	EXPECT_EQ(c.getPoints().size(), 0U);
 }
 
@@ -102,23 +103,23 @@ TEST_F(ClusterTest, Update)
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
 	const auto &centroid = c.getCentroid();
-	auto p1 = Point(0, {1, 1});
-	auto p2 = Point(1, {2, 2});
+	auto p1 = Point::create(0, {1, 1});
+	auto p2 = Point::create(1, {2, 2});
 
-	c.addPoint(&p1);
+	c.addPoint(p1);
 	c.updateMeans();
 	for(size_t i = 0; i < centroid.size(); i++)
-		EXPECT_EQ(p1.values[i], centroid[i]);
+		EXPECT_EQ(p1->values[i], centroid[i]);
 
-	c.addPoint(&p2);
+	c.addPoint(p2);
 	c.updateMeans();
 	for(size_t i = 0; i < centroid.size(); i++)
-		EXPECT_EQ((p1.values[i] + p2.values[i]) / 2, centroid[i]);
+		EXPECT_EQ((p1->values[i] + p2->values[i]) / 2, centroid[i]);
 
-	c.removePoint(&p2);
+	c.removePoint(p2);
 	c.updateMeans();
 	for(size_t i = 0; i < centroid.size(); i++)
-		EXPECT_EQ(p1.values[i], centroid[i]);
+		EXPECT_EQ(p1->values[i], centroid[i]);
 }
 
 TEST_F(ClusterTest, AddDoesNotUpdate)
@@ -126,9 +127,9 @@ TEST_F(ClusterTest, AddDoesNotUpdate)
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
 	const auto &centroid = c.getCentroid();
-	auto p1 = Point(0, {1, 1});
+	auto p1 = Point::create(0, {1, 1});
 
-	c.addPoint(&p1);
+	c.addPoint(p1);
 	for(size_t i = 0; i < centroid.size(); i++)
 		EXPECT_EQ(values[i], centroid[i]);
 }
@@ -138,13 +139,13 @@ TEST_F(ClusterTest, RemoveDoesNotUpdate)
 	auto values = std::vector<double>{1, 1};
 	auto c = Cluster(0, values);
 	const auto &centroid = c.getCentroid();
-	auto p1 = Point(0, {1, 1});
+	auto p1 = Point::create(0, {1, 1});
 
-	c.addPoint(&p1);
+	c.addPoint(p1);
 	c.updateMeans();
-	c.removePoint(&p1);
+	c.removePoint(p1);
 	for(size_t i = 0; i < centroid.size(); i++)
-		EXPECT_EQ(p1.values[i], centroid[i]);
+		EXPECT_EQ(p1->values[i], centroid[i]);
 }
 
 TEST_F(ClusterTest, UpdateOnEmpty)
@@ -164,16 +165,16 @@ TEST_F(ClusterTest, RemoveUnexistent)
 {
 	auto c = Cluster(0, {1, 2});
 	ASSERT_THROW(c.removePoint(NULL), std::runtime_error);
-	ASSERT_THROW(c.removePoint((Point *) 123), std::runtime_error);
+	ASSERT_THROW(c.removePoint(Point::create(1, {2, 3})), std::runtime_error);
 }
 
 TEST_F(ClusterTest, DifferentDimensions)
 {
 	auto c = Cluster(0, {1, 2});
-	auto p1 = Point(1, {1, 2, 3});
-	auto p2 = Point(2, {1});
-	ASSERT_THROW(c.addPoint(&p1), std::runtime_error);
-	ASSERT_THROW(c.addPoint(&p2), std::runtime_error);
+	auto p1 = Point::create(1, {1, 2, 3});
+	auto p2 = Point::create(2, {1});
+	ASSERT_THROW(c.addPoint(p1), std::runtime_error);
+	ASSERT_THROW(c.addPoint(p2), std::runtime_error);
 }
 
 TEST_F(ClusterTest, AddNullPoint)
@@ -187,22 +188,22 @@ class ClusterPairwiseDistanceTest : public testing::Test
 {
 	protected:
 	Cluster c = Cluster(0, {0, 0, 0});
-	std::vector<Point> points =
+	std::vector<point_ptr_t> points =
 	{
-			Point(-1U, {0,    0, 2}),
-			Point(-2U, {0,    2, 0}),
-			Point(-3U, {1,  0.2, 0}),
-			Point(-4U, {1,  0.2, 0}),
-			Point(-5U, {1, -0.6, 0}),
-			Point(-6U, {1, -1.4, 1}),
-			Point(-7U, {1,  1.8, 4}),
-			Point(-8U, {1,  3.5, 4}),
+		Point::create(-1U, {0,    0, 2}),
+		Point::create(-2U, {0,    2, 0}),
+		Point::create(-3U, {1,  0.2, 0}),
+		Point::create(-4U, {1,  0.2, 0}),
+		Point::create(-5U, {1, -0.6, 0}),
+		Point::create(-6U, {1, -1.4, 1}),
+		Point::create(-7U, {1,  1.8, 4}),
+		Point::create(-8U, {1,  3.5, 4}),
 	};
 
 	virtual void SetUp()
 	{
-		for (const auto &point : points)
-			c.addPoint(&point);
+		for (const point_ptr_t point : points)
+			c.addPoint(point);
 		c.updateMeans();
 	}
 };
@@ -210,7 +211,7 @@ class ClusterPairwiseDistanceTest : public testing::Test
 TEST_F(ClusterPairwiseDistanceTest, EmptyCluster)
 {
 	auto empty = Cluster(0, {0, 0, 0});
-	auto p = Point(0, {1, 2, 3});
+	auto p = Point::create(0, {1, 2, 3});
 	ASSERT_THROW(empty.pairwise_distance(p), std::runtime_error);
 	ASSERT_THROW(empty.pairwise_distance(), std::runtime_error);
 }
@@ -219,15 +220,15 @@ TEST_F(ClusterPairwiseDistanceTest, EmptyCluster)
 // The first point is not in the cluster.
 TEST_F(ClusterPairwiseDistanceTest, Point)
 {
-	const auto p = Point(0, {0, 0, 0});
+	const auto p = Point::create(0, {0, 0, 0});
 	const auto distances = c.pairwise_distance(p);
 	const auto &points = c.getPoints();
 	for (const auto &item : distances)
 	{
-		const Point *p1 = item.first.first;
-		const Point *p2 = item.first.second;
+		const point_ptr_t p1 = item.first.first;
+		const point_ptr_t p2 = item.first.second;
 		double dist = item.second;
-		ASSERT_EQ(&p, p1);
+		ASSERT_EQ(p, p1);
 		ASSERT_TRUE(points.count(p1) == 0); // p1 is not in the cluster
 		ASSERT_TRUE(points.count(p2) != 0);
 		ASSERT_EQ(dist, p1->distance(*p2));
@@ -242,8 +243,8 @@ TEST_F(ClusterPairwiseDistanceTest, NoPoint)
 	const auto &points = c.getPoints();
 	for (const auto &item : distances)
 	{
-		const Point *p1 = item.first.first;
-		const Point *p2 = item.first.second;
+		const point_ptr_t p1 = item.first.first;
+		const point_ptr_t p2 = item.first.second;
 		double dist = item.second;
 		ASSERT_TRUE(points.count(p1) != 0);
 		ASSERT_TRUE(points.count(p2) != 0);
@@ -253,16 +254,16 @@ TEST_F(ClusterPairwiseDistanceTest, NoPoint)
 
 TEST_F(ClusterPairwiseDistanceTest, PointIsInCluster)
 {
-	auto p = Point(0, {0, 0, 0});
+	auto p = Point::create(0, {0, 0, 0});
 	auto distances = c.pairwise_distance(p);
 	const auto &points = c.getPoints();
-	c.addPoint(&p);
+	c.addPoint(p);
 	for (const auto &item : distances)
 	{
-		const Point *p1 = item.first.first;
-		const Point *p2 = item.first.second;
+		const point_ptr_t p1 = item.first.first;
+		const point_ptr_t p2 = item.first.second;
 		double dist = item.second;
-		ASSERT_EQ(&p, p1);
+		ASSERT_EQ(p, p1);
 		ASSERT_TRUE(points.count(p1) != 0);
 		ASSERT_TRUE(points.count(p2) != 0);
 		ASSERT_EQ(dist, p1->distance(*p2));
@@ -272,15 +273,15 @@ TEST_F(ClusterPairwiseDistanceTest, PointIsInCluster)
 TEST_F(ClusterPairwiseDistanceTest, Mean)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	std::vector<Point> aux =
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, 1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {1, 0, 0}),
+			Point::create(-1U, {0, 0, 1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {1, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	double dist = c1.mean_pairwise_distance();
 
@@ -290,15 +291,15 @@ TEST_F(ClusterPairwiseDistanceTest, Mean)
 TEST_F(ClusterPairwiseDistanceTest, Min)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	std::vector<Point> aux =
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, 1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {10, 0, 0}),
+			Point::create(-1U, {0, 0, 1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {10, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	const double dist = c1.min_pairwise_distance();
 
@@ -308,15 +309,15 @@ TEST_F(ClusterPairwiseDistanceTest, Min)
 TEST_F(ClusterPairwiseDistanceTest, Max)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	std::vector<Point> aux =
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, 1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {10, 0, 0}),
+			Point::create(-1U, {0, 0, 1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {10, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	const double dist = c1.max_pairwise_distance();
 
@@ -326,16 +327,16 @@ TEST_F(ClusterPairwiseDistanceTest, Max)
 TEST_F(ClusterPairwiseDistanceTest, MeanPoint)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	auto p = Point(0, {0, 0, 0});
-	std::vector<Point> aux =
+	auto p = Point::create(0, {0, 0, 0});
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, 1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {1, 0, 0}),
+			Point::create(-1U, {0, 0, 1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {1, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	const double dist = c1.mean_pairwise_distance(p);
 
@@ -345,16 +346,16 @@ TEST_F(ClusterPairwiseDistanceTest, MeanPoint)
 TEST_F(ClusterPairwiseDistanceTest, MinPoint)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	auto p = Point(0, {0, 0, 0});
-	std::vector<Point> aux =
+	auto p = Point::create(0, {0, 0, 0});
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, -0.1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {10, 0, 0}),
+			Point::create(-1U, {0, 0, -0.1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {10, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	const double dist = c1.min_pairwise_distance(p);
 
@@ -364,16 +365,16 @@ TEST_F(ClusterPairwiseDistanceTest, MinPoint)
 TEST_F(ClusterPairwiseDistanceTest, MaxPoint)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
-	auto p = Point(0, {0, 0, 0});
-	std::vector<Point> aux =
+	auto p = Point::create(0, {0, 0, 0});
+	std::vector<point_ptr_t> aux =
 	{
-			Point(-1U, {0, 0, 1}),
-			Point(-2U, {0, 1, 0}),
-			Point(-3U, {-10, 0, 0}),
+			Point::create(-1U, {0, 0, 1}),
+			Point::create(-2U, {0, 1, 0}),
+			Point::create(-3U, {-10, 0, 0}),
 	};
 
 	for (const auto &point : aux)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 
 	const double dist = c1.max_pairwise_distance(p);
 
@@ -397,23 +398,23 @@ TEST(InterclusterDistanceTest, CheckDisjoint)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
 	auto c2 = Cluster(0, {0, 0, 0});
-	auto p = Point(0, {0, 0, 0});
-	std::vector<Point> aux1 =
+	auto p = Point::create(0, {0, 0, 0});
+	std::vector<point_ptr_t> aux1 =
 	{
-			Point(1U, {0, 0, 1}),
-			Point(2U, {0, 0, 2}),
-			Point(3U, {0, 0, 3}),
+			Point::create(1U, {0, 0, 1}),
+			Point::create(2U, {0, 0, 2}),
+			Point::create(3U, {0, 0, 3}),
 	};
-	std::vector<Point> aux2 =
+	std::vector<point_ptr_t> aux2 =
 	{
-			Point(1U, {1, 0, 1}),
-			Point(2U, {0, 100, 0}),
-			Point(3U, {110, 0, 0}),
+			Point::create(1U, {1, 0, 1}),
+			Point::create(2U, {0, 100, 0}),
+			Point::create(3U, {110, 0, 0}),
 	};
 
 	ASSERT_TRUE(c1.disjoint(c2));
-	c1.addPoint(&p);
-	c2.addPoint(&p);
+	c1.addPoint(p);
+	c2.addPoint(p);
 	ASSERT_FALSE(c1.disjoint(c2));
 }
 
@@ -421,28 +422,28 @@ TEST(InterclusterDistanceTest, ClosestPoints)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
 	auto c2 = Cluster(0, {0, 0, 0});
-	auto p = Point(0, {1, 11, 111});
-	std::vector<Point> aux1 =
+	auto p = Point::create(0, {1, 11, 111});
+	std::vector<point_ptr_t> aux1 =
 	{
-			Point(1U, {0, 0, 1}),
-			Point(2U, {0, 0, 2}),
-			Point(3U, {0, 0, 3}),
+			Point::create(1U, {0, 0, 1}),
+			Point::create(2U, {0, 0, 2}),
+			Point::create(3U, {0, 0, 3}),
 	};
-	std::vector<Point> aux2 =
+	std::vector<point_ptr_t> aux2 =
 	{
-			Point(1U, {1, 0, 1}),
-			Point(2U, {0, 100, 0}),
-			Point(3U, {110, 0, 0}),
+			Point::create(1U, {1, 0, 1}),
+			Point::create(2U, {0, 100, 0}),
+			Point::create(3U, {110, 0, 0}),
 	};
-	for (const auto &point : aux1)
-		c1.addPoint(&point);
-	for (const auto &point : aux2)
-		c2.addPoint(&point);
+	for (const point_ptr_t point : aux1)
+		c1.addPoint(point);
+	for (const point_ptr_t point : aux2)
+		c2.addPoint(point);
 	ASSERT_EQ(c1.closest_points_distance(c2), 1);
 
 	// Now the clusters share a point so the distance should be 0
-	c1.addPoint(&p);
-	c2.addPoint(&p);
+	c1.addPoint(p);
+	c2.addPoint(p);
 	ASSERT_EQ(c1.closest_points_distance(c2), 0);
 }
 
@@ -450,28 +451,28 @@ TEST(InterclusterDistanceTest, FarthestPoints)
 {
 	auto c1 = Cluster(1, {0, 0, 0});
 	auto c2 = Cluster(0, {0, 0, 0});
-	auto p = Point(0, {1, 1, 1});
-	std::vector<Point> aux1 =
+	auto p = Point::create(0, {1, 1, 1});
+	std::vector<point_ptr_t> aux1 =
 	{
-			Point(-1U, {1, 2, 6}),
-			Point(-2U, {2, 2, 6}),
-			Point(-3U, {10, 0, 0}),
+			Point::create(-1U, {1, 2, 6}),
+			Point::create(-2U, {2, 2, 6}),
+			Point::create(-3U, {10, 0, 0}),
 	};
-	std::vector<Point> aux2 =
+	std::vector<point_ptr_t> aux2 =
 	{
-			Point(-1U, {0, 50, -0.1}),
-			Point(-2U, {0, 100, -0.1}),
-			Point(-3U, {11, 0, 0}),
+			Point::create(-1U, {0, 50, -0.1}),
+			Point::create(-2U, {0, 100, -0.1}),
+			Point::create(-3U, {11, 0, 0}),
 	};
 	for (const auto &point : aux1)
-		c1.addPoint(&point);
+		c1.addPoint(point);
 	for (const auto &point : aux2)
-		c2.addPoint(&point);
+		c2.addPoint(point);
 	ASSERT_EQ(c1.farthest_points_distance(c2), std::sqrt(100 + 10000 + 0.01));
 
 	// Now the clusters share a point
-	c1.addPoint(&p);
-	c2.addPoint(&p);
+	c1.addPoint(p);
+	c2.addPoint(p);
 	ASSERT_EQ(c1.farthest_points_distance(c2), std::sqrt(100 + 10000 + 0.01));
 }
 
@@ -501,17 +502,17 @@ TEST_F(KMeansTest, NearestCluster)
 
 TEST_F(KMeansTest, InitClusters)
 {
-	Point p1 = {0, {11,11,11}};
-	Point p2 = {1, {21,21,21}};
-	Point p3 = {2, {31,31,31}};
-	std::vector<Point> points = {p1, p2, p3} ;
+	auto p1 = Point::create(0, {11,11,11});
+	auto p2 = Point::create(1, {21,21,21});
+	auto p3 = Point::create(2, {31,31,31});
+	std::vector<point_ptr_t> points = {p1, p2, p3} ;
 
 	KMeans::initClusters(points.size(), points, clusters);
 
 	ASSERT_EQ(clusters.size(), points.size());
 	for (size_t i = 0; i < clusters.size(); i++)
 	{
-		ASSERT_EQ(clusters[i].centroid_distance(points[i]), 0);
+		ASSERT_EQ(clusters[i].centroid_distance(*points[i]), 0);
 		ASSERT_EQ(clusters[i].getPoints().size(), 0U);
 	}
 }
@@ -525,16 +526,16 @@ TEST_F(KMeansTest, Clusterize)
 			Cluster(2, {0}),
 			Cluster(3, {0})
 	};
-	std::vector<Point> points =
+	std::vector<point_ptr_t> points =
 	{
-		{1, {369342069}},
-		{2, {236950595}},
-		{3, {374689971}},
-		{4, {23961389}},
-		{5, {5440233}},
-		{6, {241292687}},
-		{7, {25111863}},
-		{8, {194790544}}
+		Point::create(1, {369342069}),
+		Point::create(2, {236950595}),
+		Point::create(3, {374689971}),
+		Point::create(4, {23961389}),
+		Point::create(5, {5440233}),
+		Point::create(6, {241292687}),
+		Point::create(7, {25111863}),
+		Point::create(8, {194790544})
 	};
 	size_t iters = KMeans::clusterize(4, points, clusters, 5);
 

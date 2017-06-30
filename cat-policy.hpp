@@ -74,7 +74,7 @@ class Slowfirst: public Base
 
 	// It's important to NOT make distinctions between completed and not completed tasks...
 	// We asume that the event we care about has been programed as ev2.
-	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist) {}
 };
 typedef Slowfirst Sf;
 
@@ -95,7 +95,7 @@ class SlowfirstClustered: public Slowfirst
 
 	virtual ~SlowfirstClustered() = default;
 
-	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist) {};
 };
 typedef SlowfirstClustered SfC;
 
@@ -111,7 +111,7 @@ class SlowfirstClusteredAdjusted: public SlowfirstClustered
 
 	virtual ~SlowfirstClusteredAdjusted() = default;
 
-	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist);
+	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist) {}
 };
 typedef SlowfirstClusteredAdjusted SfCA;
 

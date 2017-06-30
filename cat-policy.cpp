@@ -51,206 +51,6 @@ void Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
 }
 
 
-void Slowfirst::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
-{
-	// It's important to NOT make distinctions between completed and not completed tasks...
-	// We asume that the event we care about has been programed as ev2.
-
-	// Apply only when the amount of intervals specified has passed
-	if (current_interval % every != 0)
-		return;
-
-	LOGDEB("function: {}, interval: {}"_format(__PRETTY_FUNCTION__, current_interval));
-
-	// (Core, Combined stalls) tuple
-	typedef std::tuple<uint32_t, uint64_t> pair;
-	auto v = std::vector<pair>();
-
-	check_masks(masks);
-	set_masks(masks);
-
-	for (uint32_t t = 0; t < tasklist.size(); t++)
-	{
-		uint64_t l2_miss_stalls;
-		const Task &task = tasklist[t];
-		try
-		{
-			l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		}
-		catch (const std::exception &e)
-		{
-			std::string msg = "This policy requires the event CYCLE_ACTIVITY.STALLS_TOTAL. The events monitorized are:";
-			for (const auto &kv : task.stats_total.events)
-				msg += "\n" + kv.first;
-			throw_with_trace(std::runtime_error(msg));
-		}
-		assert(task.cpus.size() == 1);
-		v.push_back(std::make_pair(task.cpus.front(), l2_miss_stalls));
-	}
-
-	// Sort in descending order by stalls
-	std::sort(begin(v), end(v),
-			[](const pair &t1, const pair &t2)
-			{
-				return std::get<1>(t1) > std::get<1>(t2);
-			});
-
-	// Assign the slowest cores to masks which will hopefully help them
-	for (uint32_t pos = 0; pos < masks.size() - 1; pos++)
-	{
-		uint32_t cos  = masks.size() - pos - 1;
-		uint32_t core = std::get<0>(v[pos]);
-		cat->add_cpu(cos, core); // Assign core to COS
-	}
-}
-
-
-void SlowfirstClustered::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
-{
-	// Apply the policy only when the amount of intervals specified has passed
-	if (current_interval % every != 0)
-		return;
-
-	assert(num_clusters > 0);
-
-	auto data = std::vector<Point>();
-	clusters.clear();
-
-	cat->reset();
-	set_masks(masks);
-
-	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
-
-	// Put data in the format KMeans expects
-	LOGDEB("Tasks:");
-	for (uint32_t t = 0; t < tasklist.size(); t++)
-	{
-		const Task &task = tasklist[t];
-		uint64_t l2_miss_stalls = acc::sum(task.stats_total.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		data.push_back(Point(t, {(double) l2_miss_stalls}));
-		LOGDEB(fmt::format("{{id: {}, name: {}, completed: {}, stalls: {:n}}}", task.id, task.name, task.completed, l2_miss_stalls));
-	}
-
-	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), num_clusters));
-	KMeans::clusterize(num_clusters, data, clusters, 100);
-
-	// Sort clusters in descending order
-	std::sort(begin(clusters), end(clusters),
-			[](const Cluster &c1, const Cluster &c2)
-			{
-				return c1.getCentroid()[0] > c2.getCentroid()[0];
-			});
-
-	LOGDEB("Sorted clusters:");
-	for (const auto &cluster : clusters)
-		LOGDEB(cluster.to_string());
-
-	// Iterate clusters
-	LOGDEB("Classes Of Service:");
-	for (size_t c = 0; c < clusters.size(); c++)
-	{
-		size_t cos  = masks.size() - c - 1;
-		const auto &cluster = clusters[c];
-
-		// Iterate tasks in cluster and put them in the adequate COS
-		std::string task_ids;
-		size_t i = 0;
-		for(const auto &p : cluster.getPoints())
-		{
-			const Task &task = tasklist[p->id];
-			assert(task.cpus.size() == 1);
-			cat->add_cpu(cos, task.cpus.front());
-			task_ids += i < cluster.getPoints().size() - 1 ?
-					std::to_string(task.id) + ", ":
-					std::to_string(task.id);
-			i++;
-		}
-
-		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, tasks: [{}]}}}}", cos, masks[cos], task_ids));
-	}
-}
-
-
-void SlowfirstClusteredAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
-{
-	// Call parent first for clustering the applications
-	SlowfirstClustered::apply(current_interval, tasklist);
-
-	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
-
-	auto diffs = std::vector<uint64_t>(clusters.size());
-	auto linear = std::vector<double>(clusters.size());
-	auto quadratic = std::vector<double>(clusters.size());
-	auto exponential = std::vector<double>(clusters.size());
-
-	for (size_t i = 0; i < clusters.size(); i++)
-	{
-		diffs[i] = clusters[i].getCentroid()[0];
-		if (i < clusters.size() - 1)
-			diffs[i] -= clusters[i + 1].getCentroid()[0];
-
-		linear[i] = diffs[i] / clusters[0].getCentroid()[0];
-		quadratic[i] = pow(linear[i], 2);
-		exponential[i] = exp(linear[i]);
-	}
-
-	LOGDEB("Intercluster distances:");
-	LOGDEB(diffs);
-
-	double ltot = 0;
-	double qtot = 0;
-	double etot = 0;
-	for (double &x : linear) ltot += x;
-	for (double &x : quadratic) qtot += x;
-	for (double &x : exponential) etot += x;
-
-	LOGDEB("Lineal, quadratic and exponential models:");
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	LOGDEB("Teoretical ways:");
-	for (double &x : linear) x = x / ltot * max_num_ways;
-	for (double &x : quadratic) x = x / qtot * max_num_ways;
-	for (double &x : exponential) x = x / etot * max_num_ways;
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	for (auto v : {&linear, &quadratic, &exponential})
-	{
-		double p = max_num_ways;
-		for (size_t i = 0; i < v->size(); i++)
-		{
-			auto &x = (*v)[i];
-			x = p - x;
-			p = x;
-		}
-		for (size_t i = v->size() - 1; i > 0; i--)
-			(*v)[i] = std::max((uint32_t) round((*v)[i - 1]), cat::min_num_ways);
-		(*v)[0] = max_num_ways;
-	}
-
-	LOGDEB("Effective ways:");
-	LOGDEB(linear);
-	LOGDEB(quadratic);
-	LOGDEB(exponential);
-
-	for (size_t i = 0;  i < clusters.size(); i++)
-	{
-		size_t cos = masks.size() - i - 1;
-		uint32_t ways = exponential[i];
-		masks[cos] = (complete_mask >> (max_num_ways - ways));
-	}
-
-	LOGDEB("Classes Of Service:");
-	for (size_t cos = masks.size() - 1; cos < masks.size(); cos--)
-		LOGDEB(fmt::format("{{COS{}: {{mask: {:#x}, num_ways: {}}}}}", cos, masks[cos], __builtin_popcount(masks[cos])));
-
-	set_masks(masks);
-}
-
-
 // We want to slit an area of size max_num_ways in clusters.size() partitions.
 // This partitions have a minimum size of min_num_ways ans a maximum size of max_num_ways.
 // We will use 3 different models: a linear, a quadratic, and an exponential model.
@@ -337,7 +137,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	if (current_interval % every != 0)
 		return;
 
-	auto data = std::vector<Point>();
+	auto data = points_t();
 	acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance, acc::tag::max>> accum;
 
 	LOGDEB(fmt::format("function: {}, interval: {}", __PRETTY_FUNCTION__, current_interval));
@@ -353,7 +153,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		const std::string he = "MEM_LOAD_UOPS_RETIRED.L3_HIT";
 		const std::string me = "MEM_LOAD_UOPS_RETIRED.L3_MISS";
 		const std::string se = "CYCLE_ACTIVITY.STALLS_TOTAL";
-		const Stats &stats = task.stats_interval;
+		const Stats &stats = task.stats;
 		try
 		{
 			l3_hits = acc::rolling_mean(stats.events.at(he));
@@ -373,18 +173,18 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		double metric = accum_stalls;
 
 		double completed = task.max_instr ?
-				(double) task.stats_total.instructions / (double) task.max_instr : task.completed;
+				(double) stats.get_current("instructions") / (double) task.max_instr : task.completed;
 
 		accum(stalls);
 
-		data.push_back(Point(task.id, {metric}));
+		data.push_back(std::make_shared<Point>(task.id, std::vector<double>(metric)));
 		LOGDEB(fmt::format("{{id: {}, name: {}, completed: {:.2f}, metric: {}, stalls: {:n}, hr: {}}}", task.id, task.name, completed, metric, stalls, hr));
 	}
 
 	if (min_stall_ratio > 0)
 	{
 		// Ratio of cycles stalled and cycles the execution has been running for the most stalled application
-		const double stall_ratio = acc::max(accum) / tasklist[0].stats_total.invariant_cycles;
+		const double stall_ratio = acc::max(accum) / tasklist[0].stats.get_current("ref_cycles");
 		if (stall_ratio < min_stall_ratio)
 		{
 			LOGDEB("Better to do nothing, since the processor is only stalled {}% of the time"_format(stall_ratio * 100));
@@ -407,9 +207,9 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			LOGDEB("Use predetermined cluster sizes...");
 			// Sort points in DESCENDING order
 			std::sort(begin(data), end(data),
-					[](const Point &p1, const Point &p2)
+					[](const point_ptr_t p1, const point_ptr_t p2)
 					{
-						return p1.values[0] > p2.values[0];
+						return p1->values[0] > p2->values[0];
 					});
 			clusters.clear();
 			size_t cid = 0;
@@ -420,8 +220,8 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 				for (size_t i = 0; i < size; i++)
 				{
 					assert(data_iter != data.end());
-					const Point &point = *data_iter;
-					clusters.back().addPoint(&point);
+					const auto point = *data_iter;
+					clusters.back().addPoint(point);
 					data_iter++;
 				}
 				clusters.back().updateMeans();
@@ -433,9 +233,9 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			assert(data.size() % 2 == 0 && (data.size() / 2) <= cat->get_max_closids());
 			// Sort points in DESCENDING order
 			std::sort(begin(data), end(data),
-					[](const Point &p1, const Point &p2)
+					[](const point_ptr_t p1, const point_ptr_t p2)
 					{
-						return p1.values[0] > p2.values[0];
+						return p1->values[0] > p2->values[0];
 					});
 			clusters.clear();
 			size_t cid = 0;
@@ -444,11 +244,11 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			it2--;
 			while (std::distance(data.begin(), it1) < std::distance(data.begin(), it2))
 			{
-				const Point &p1 = *it1;
-				const Point &p2 = *it2;
+				const auto p1 = *it1;
+				const auto p2 = *it2;
 				clusters.push_back(Cluster(cid++, {0}));
-				clusters.back().addPoint(&p1);
-				clusters.back().addPoint(&p2);
+				clusters.back().addPoint(p1);
+				clusters.back().addPoint(p2);
 				clusters.back().updateMeans();
 				it1++;
 				it2--;
@@ -494,7 +294,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	if (model.name != "none")
 	{
 		const double th = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
-		const Point *p = *std::max_element(clusters[1].getPoints().begin(), clusters[1].getPoints().end(), [](const Point *a, const Point *b){ return a->values[0] < b->values[0]; });
+		const point_ptr_t p = *std::max_element(clusters[1].getPoints().begin(), clusters[1].getPoints().end(), [](const point_ptr_t a, const point_ptr_t b){ return a->values[0] < b->values[0]; });
 
 		size_t c;
 		for (c = 0;  c < clusters.size(); c++)

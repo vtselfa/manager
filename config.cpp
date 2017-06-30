@@ -281,7 +281,7 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		}
 
 		// Maximum number of instructions to execute
-		uint64_t max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : -1ULL;
+		uint64_t max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : 0;
 
 		bool batch = tasks[i]["batch"] ? tasks[i]["batch"].as<bool>() : false;
 

@@ -98,7 +98,7 @@ static int read_counter(struct perf_evlist *evsel_list, struct perf_evsel *count
 }
 
 
-void read_counters(struct perf_evlist *evsel_list)
+void read_counters(struct perf_evlist *evsel_list, const char **names, double *results, const char **units, bool *snapshot, double *enabled)
 {
 	struct perf_evsel *counter;
 	struct perf_stat_config stat_config =
@@ -114,6 +114,49 @@ void read_counters(struct perf_evlist *evsel_list)
 
 		if (perf_stat_process_counter(&stat_config, counter))
 			fprintf(stderr, "failed to process counter %s\n", counter->name);
+	}
+
+	size_t i = 0;
+	evlist__for_each_entry(evsel_list, counter)
+	{
+		int nthreads = thread_map__nr(counter->threads);
+		int ncpus = cpu_map__nr(counter->cpus);
+		uint64_t ena = 0, run = 0, val = 0;
+
+		for (int thread = 0; thread < nthreads; thread++)
+		{
+			for (int cpu = 0; cpu < ncpus; cpu++)
+			{
+				val += perf_counts(counter->counts, cpu, thread)->val;
+				ena += perf_counts(counter->counts, cpu, thread)->ena;
+				run += perf_counts(counter->counts, cpu, thread)->run;
+			}
+		}
+		if (names)
+			names[i] = counter->name;
+		if (results)
+			results[i] = val * counter->scale;
+		if (units)
+			units[i] = counter->unit;
+		if (snapshot)
+			snapshot[i] = counter->snapshot;
+		if (enabled)
+			enabled[i] = run == ena ? 1 : (double) run / (double) ena;
+		i++;
+	}
+}
+
+
+void get_names(struct perf_evlist *evsel_list, const char **names)
+{
+	struct perf_evsel *counter;
+
+	size_t i = 0;
+	evlist__for_each_entry(evsel_list, counter)
+	{
+		if (names)
+			names[i] = counter->name;
+		i++;
 	}
 }
 
@@ -180,8 +223,10 @@ struct perf_evlist* setup_events(const char *pid, const char *events)
 	if (evsel_list == NULL)
 		return NULL;
 
-	parse_events(evsel_list, events, NULL);
-
+	if (parse_events(evsel_list, events, NULL))
+	{
+		goto out;
+	}
 
 	if (perf_evlist__create_maps(evsel_list, &target) < 0)
 	{
@@ -189,6 +234,8 @@ struct perf_evlist* setup_events(const char *pid, const char *events)
 		pr_err("Problems finding threads of monitor\n");
 		goto out;
 	}
+	cpu_map__put(evsel_list->cpus);
+	thread_map__put(evsel_list->threads);
 
 	if (perf_evlist__alloc_stats(evsel_list, true))
 		goto out;
@@ -264,8 +311,14 @@ void clean(struct perf_evlist *evlist)
 	 * group leaders.
 	 */
 	disable_counters(evlist);
-	read_counters(evlist);
+	read_counters(evlist, NULL, NULL, NULL, NULL, NULL);
 	perf_evlist__close(evlist);
 	perf_evlist__free_stats(evlist);
 	perf_evlist__delete(evlist);
+}
+
+
+int num_entries(struct perf_evlist *evsel_list)
+{
+	return evsel_list->nr_entries;
 }

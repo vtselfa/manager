@@ -31,7 +31,7 @@ double Point::distance(const Point &o) const
 }
 
 
-void Cluster::addPoint(const Point *p)
+void Cluster::addPoint(const point_ptr_t p)
 {
 	if (p == NULL)
 		throw_with_trace(std::runtime_error("Cannot add a NULL Point pointer to cluster"));
@@ -43,12 +43,12 @@ void Cluster::addPoint(const Point *p)
 }
 
 
-void Cluster::removePoint(const Point *p)
+void Cluster::removePoint(const point_ptr_t p)
 {
 	if (p == NULL)
 		throw_with_trace(std::runtime_error("Cannot remove a NULL Point pointer from the cluster"));
 	if (points.count(p) == 0)
-		throw_with_trace(std::runtime_error("The point {:#x} is not in the cluster"_format((void *) p)));
+		throw_with_trace(std::runtime_error("The point with id: {} is not in the cluster"_format(p->id)));
 	points.erase(p);
 }
 
@@ -87,17 +87,17 @@ double Cluster::centroid_distance(const Point &p) const
 }
 
 
-std::vector<P2PDist> Cluster::pairwise_distance(const Point &p) const
+std::vector<P2PDist> Cluster::pairwise_distance(const point_ptr_t p) const
 {
 	if (points.size() == 0)
 		throw_with_trace(std::runtime_error("Cannot compute the pairwise distance if the cluster is empty"));
 	auto result = std::vector<P2PDist>();
-	for(const auto &q : points)
+	for(const auto q : points)
 	{
 		// Ignore p if it's in the cluster
-		if (&p == q)
+		if (p == q)
 			continue;
-		P2PDist p2pdist = std::make_pair(std::make_pair(&p, q), p.distance(*q));
+		P2PDist p2pdist = std::make_pair(std::make_pair(p, q), p->distance(*q));
 		result.push_back(p2pdist);
 	}
 	return result;
@@ -112,12 +112,12 @@ std::vector<P2PDist> Cluster::pairwise_distance() const
 	auto result = std::vector<P2PDist>();
 	for (auto it1 = points.begin(); it1 != points.end(); it1++)
 	{
-		const Point *pi = *it1;
+		const point_ptr_t pi = *it1;
 		auto it2 = it1;
 		it2++;
 		for (; it2 != points.end(); it2++)
 		{
-			const Point *pj = *it2;
+			const point_ptr_t pj = *it2;
 			P2PDist p2pdist = std::make_pair(
 					std::make_pair(pi, pj),
 					pi->distance(*pj));
@@ -129,7 +129,7 @@ std::vector<P2PDist> Cluster::pairwise_distance() const
 }
 
 
-double Cluster::mean_pairwise_distance(const Point &p) const
+double Cluster::mean_pairwise_distance(const point_ptr_t p) const
 {
 	auto distances = pairwise_distance(p);
 	double sum = 0;
@@ -139,7 +139,7 @@ double Cluster::mean_pairwise_distance(const Point &p) const
 }
 
 
-double Cluster::min_pairwise_distance(const Point &p) const
+double Cluster::min_pairwise_distance(const point_ptr_t p) const
 {
 	double min = std::numeric_limits<double>().max();
 	auto distances = pairwise_distance(p);
@@ -150,7 +150,7 @@ double Cluster::min_pairwise_distance(const Point &p) const
 }
 
 
-double Cluster::max_pairwise_distance(const Point &p) const
+double Cluster::max_pairwise_distance(const point_ptr_t p) const
 {
 	double max = 0;
 	auto distances = pairwise_distance(p);
@@ -202,9 +202,9 @@ double Cluster::centroid_to_centroid_distance(const Cluster &c) const
 double Cluster::farthest_points_distance(const Cluster &c) const
 {
 	double max = 0;
-	for (const auto &p : c.getPoints())
+	for (const point_ptr_t p : c.getPoints())
 	{
-		double local_max = max_pairwise_distance(*p);
+		double local_max = max_pairwise_distance(p);
 		if (local_max > max)
 			max = local_max;
 	}
@@ -220,9 +220,9 @@ double Cluster::closest_points_distance(const Cluster &c) const
 	if (!disjoint(c))
 		return 0;
 
-	for (const auto &p : c.getPoints())
+	for (const point_ptr_t p : c.getPoints())
 	{
-		double local_min = min_pairwise_distance(*p);
+		double local_min = min_pairwise_distance(p);
 		if (local_min < min)
 			min = local_min;
 	}
@@ -234,7 +234,7 @@ double Cluster::mean_centroid_distance() const
 {
 	auto center = Point(-1U, this->centroid);
 	double sum = 0;
-	for (const auto &p : points)
+	for (const point_ptr_t p : points)
 		sum += centroid_distance(*p);
 	return sum / points.size();
 }
@@ -294,9 +294,9 @@ double KMeans::silhouette(const std::vector<Cluster> &clusters)
 	for (size_t k = 0; k < clusters.size(); k++)
 	{
 		double sk = 0; // Silhouette index for the cluster
-		for (const auto &p : clusters[k].getPoints())
+		for (const point_ptr_t p : clusters[k].getPoints())
 		{
-			double a = clusters[k].mean_pairwise_distance(*p);
+			double a = clusters[k].mean_pairwise_distance(p);
 			double b = std::numeric_limits<double>::max();
 			// The pairwise distance can be NAN is this is the only member of the cluster.
 			// If that is the case we set it to 0.
@@ -305,7 +305,7 @@ double KMeans::silhouette(const std::vector<Cluster> &clusters)
 			for (size_t k2 = 0; k2 < clusters.size(); k2++)
 			{
 				if (k == k2) continue;
-				b = std::min(b, clusters[k2].mean_pairwise_distance(*p));
+				b = std::min(b, clusters[k2].mean_pairwise_distance(p));
 			}
 			double si = (b - a) / std::max(a, b); // Silhouette index for the point
 			sk += si;
@@ -345,22 +345,22 @@ double KMeans::dunn_index(const std::vector<Cluster> &clusters)
 }
 
 
-void KMeans::initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters)
+void KMeans::initClusters(size_t k, const points_t &points, std::vector<Cluster> &clusters)
 {
 	clusters.clear();
 	double dist = (double) points.size() / (double) k;
 	for (size_t i = 0 ; i < k ; i++)
 	{
 		size_t index = round(dist * i);
-		clusters.push_back(Cluster(i, points[index].values));
+		clusters.push_back(Cluster(i, points[index]->values));
 	}
 }
 
 
-void KMeans::reinitCluster(const std::vector<Point> &points, Cluster &c)
+void KMeans::reinitCluster(const points_t &points, Cluster &c)
 {
 	size_t index = round((double) rand() / (double) RAND_MAX * (double) (points.size() - 1));
-	c.set_centroid(points[index].values);
+	c.set_centroid(points[index]->values);
 }
 
 
@@ -375,7 +375,7 @@ std::string KMeans::to_string(const std::vector<Cluster> &clusters)
 }
 
 
-size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter)
+size_t KMeans::clusterize(size_t k, const points_t &points, std::vector<Cluster> &clusters, size_t max_iter)
 {
 	assert(points.size() > 0);
 
@@ -398,15 +398,15 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 		for(size_t i = 0; i < total_points; i++)
 		{
 			int id_old_cluster = assigned[i];
-			int id_nearest_center = nearestCluster(clusters, points[i]);
+			int id_nearest_center = nearestCluster(clusters, *points[i]);
 
 			if(id_old_cluster != id_nearest_center)
 			{
 				if(id_old_cluster != -1)
-					clusters[id_old_cluster].removePoint(&points[i]);
+					clusters[id_old_cluster].removePoint(points[i]);
 
 				assigned[i] = id_nearest_center;
-				clusters[id_nearest_center].addPoint(&points[i]);
+				clusters[id_nearest_center].addPoint(points[i]);
 				done = false;
 			}
 		}
@@ -431,7 +431,7 @@ size_t KMeans::clusterize(size_t k, const std::vector<Point> &points, std::vecto
 }
 
 
-size_t KMeans::clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters)
+size_t KMeans::clusterize_optimally(size_t max_k, const points_t &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters)
 {
 	double best_result = -std::numeric_limits<double>().infinity();
 	size_t best_k = -1U;

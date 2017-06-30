@@ -12,7 +12,7 @@
 #include "cat-policy.hpp"
 #include "common.hpp"
 #include "config.hpp"
-#include "events-intel.hpp"
+#include "events-perf.hpp"
 #include "log.hpp"
 #include "stats.hpp"
 #include "task.hpp"
@@ -42,13 +42,15 @@ using std::endl;
 using fmt::literals::operator""_format;
 
 typedef std::shared_ptr<CAT> CAT_ptr_t;
+typedef std::chrono::system_clock::time_point time_point_t;
 
 
 CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist);
-void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
-void clean(vector<Task> &tasklist, CAT_ptr_t cat);
-[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat);
+void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, Perf &perf, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
+void clean(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf);
+[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf);
 std::string program_options_to_string(const std::vector<po::option>& raw);
+void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, const uint64_t interval, const uint64_t time_int_us, int64_t &adj_delay_us);
 
 
 CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
@@ -81,6 +83,7 @@ CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
 void loop(
 		vector<Task> &tasklist,
 		std::shared_ptr<cat::policy::Base> catpol,
+		Perf &perf,
 		const vector<string> &events,
 		uint64_t time_int_us,
 		uint32_t max_int,
@@ -93,60 +96,54 @@ void loop(
 	if (max_int <= 0)
 		throw_with_trace(std::runtime_error("Max time must be positive and greater than 0"));
 
-	// For adjusting the time sleeping
-	uint64_t adj_delay_us = time_int_us;
-	uint64_t total_elapsed_us = 0;
-	const double kp = 0.5;
-	const double ki = 0.25;
-
-	// The PERfCountMon class receives 3 lambdas: une for resuming task, other for waiting, and the last one for pausing the tasks.
-	// Note that each lambda captures variables by reference, specially the waiter,
-	// which captures the time to wait by reference, so when it's adjusted it's not necessary to do anything.
-	auto resume = [&tasklist]()     { tasks_resume(tasklist); };
-	auto wait   = [&adj_delay_us]() { sleep_for(chr::microseconds(adj_delay_us));};
-	auto pause  = [&tasklist]()     { tasks_pause(tasklist); };
-	auto perf = PerfCountMon<decltype(resume), decltype(wait), decltype(pause)> (resume, wait, pause);
-	perf.mon_custom_events(events);
+	// Prepare Perf to measure events and initialize stats
+	for (auto &task : tasklist)
+		task.stats.init(perf.get_names(task.pid)[0]);
 
 	// Print headers
-	task_stats_print_headers(tasklist[0], StatsKind::interval, out);
-	task_stats_print_headers(tasklist[0], StatsKind::until_compl_summary, ucompl_out);
-	task_stats_print_headers(tasklist[0], StatsKind::total_summary, total_out);
+	task_stats_print_headers(tasklist[0], out);
+	task_stats_print_headers(tasklist[0], ucompl_out);
+	task_stats_print_headers(tasklist[0], total_out);
+
+	// First reading of counters
+	for (auto &task : tasklist)
+	{
+		perf.enable_counters(task.pid);
+		const counters_t counters = perf.read_counters(task.pid)[0];
+		task.stats.accum(counters);
+	}
 
 	// Loop
 	uint32_t interval;
-	auto last_measurements  = vector<Measurement>();
+	int64_t adj_delay_us = time_int_us;
+	auto start_glob = std::chrono::system_clock::now();
+
+	// tasks_resume(tasklist);
 	for (interval = 0; interval < max_int; interval++)
 	{
-		LOGINF("Interval {}"_format(interval));
-		auto cores         = tasks_cores_used(tasklist);
-		auto measurements  = vector<Measurement>();
+		auto start_int = std::chrono::system_clock::now();
 		bool all_completed = true; // Have all the tasks reached their execution limit?
 
-		// Run for some time, take stats and pause
-		uint64_t elapsed_us = perf.measure(cores, measurements);
-		total_elapsed_us += elapsed_us;
+		LOGINF("Starting interval {} - {} us"_format(interval, chr::duration_cast<chr::microseconds> (start_int - start_glob).count()));
+
+		// Sleep
+		tasks_resume(tasklist);
+		sleep_for(chr::microseconds(adj_delay_us));
+		tasks_pause(tasklist);
+		LOGDEB("Slept for {} us"_format(adj_delay_us));
+
+		// Read stats
+		for (auto &task : tasklist)
+		{
+			const counters_t counters = perf.read_counters(task.pid)[0];
+			task.stats.accum(counters);
+		}
 
 		// Process tasks...
-		for (size_t i = 0; i < tasklist.size(); i++)
+		for (auto &task : tasklist)
 		{
-			auto &task = tasklist[i];
-
-			// Deal with PCM transcient errors
-			if (measurements_are_wrong(measurements[i]) && task.stats_acumulated.instructions > 0)
-			{
-				LOGWAR("The results for the interval " << interval << " seem wrong, they will be replaced with the values from the previous interval:");
-				LOGWAR(stats_to_string(task.stats_interval, task.id, task.name,  interval - 1, " "));
-				measurements[i] = last_measurements[i];
-			}
-
-			// Count stats
-			task.stats_interval = Stats(measurements[i]);
-			task.stats_acumulated.accum(measurements[i]);
-			task.stats_total.accum(measurements[i]);
-
-			// Instruction limit reached
-			if (task.stats_acumulated.instructions >= task.max_instr)
+			// Test if the instruction limit has been reached
+			if (task.max_instr > 0 && task.stats.get_current("instructions") >=  task.max_instr)
 			{
 				task.limit_reached = true;
 				task.completed++;
@@ -161,49 +158,65 @@ void loop(
 			if (task.completed == 1)
 			{
 				if (task.limit_reached || task.finished)
-					task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
+					task_stats_print_total(task, interval, ucompl_out);
 			}
 			// Print interval stats
-			task_stats_print(task, StatsKind::interval, interval, out);
+			task_stats_print_interval(task, interval, out);
 		}
 
 		// All the tasks have reached their limit -> finish execution
 		if (all_completed)
 			break;
 
+		// Restart the tasks that have reached their limit
+		tasks_kill_and_restart(tasklist, perf, events);
+
 		// Adjust CAT according to the selected policy
 		catpol->apply(interval, tasklist);
 
-		// Restart the tasks that have reached their limit
-		tasks_kill_and_restart(tasklist);
-
-		// Adjust time with a PI controller
-		int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
-		int64_t integral     = (int64_t) time_int_us * (interval + 1) - (int64_t) total_elapsed_us;
-		adj_delay_us += kp * proportional;
-		adj_delay_us += ki * integral;
-
-		last_measurements = measurements;
+		// Control elapsed time
+		adjust_time(start_int, start_glob, interval, time_int_us, adj_delay_us);
 	}
 
 	// Print acumulated stats for non completed tasks and total stats for all the tasks
 	for (const auto &task : tasklist)
 	{
 		if (!task.completed)
-			task_stats_print(task, StatsKind::until_compl_summary, interval, ucompl_out);
-		task_stats_print(task, StatsKind::total_summary, interval, total_out);
+			task_stats_print_total(task, interval, ucompl_out);
+		task_stats_print_total(task, interval, total_out);
 	}
+}
 
-	// For some reason killing a stopped process returns EPERM... this solves it
-	tasks_resume(tasklist);
+
+void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, const uint64_t interval, const uint64_t time_int_us, int64_t &adj_delay_us)
+{
+	// Control elapsed time
+	uint64_t elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>
+			(std::chrono::system_clock::now() - start_int).count();
+	uint64_t total_elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>
+			(std::chrono::system_clock::now() - start_glob).count();
+
+	// Adjust time with a PI controller
+	const double kp = 0.5;
+	const double ki = 0.25;
+	int64_t proportional = (int64_t) time_int_us - (int64_t) elapsed_us;
+	int64_t integral     = (int64_t) time_int_us * (interval + 1) - (int64_t) total_elapsed_us;
+	adj_delay_us += kp * proportional;
+	adj_delay_us += ki * integral;
+
+	if (adj_delay_us < 0)
+	{
+		LOGWAR("This interval was way too long. The next interval should last {} us. It will last 0."_format(adj_delay_us));
+		adj_delay_us = 0;
+	}
 }
 
 
 // Leave the machine in a consistent state
-void clean(vector<Task> &tasklist, CAT_ptr_t cat)
+void clean(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf)
 {
 	cat->reset();
-	pcm_cleanup();
+	perf.clean();
 
 	// Try to drop privileges before killing anything
 	LOGINF("Dropping privileges...");
@@ -226,7 +239,7 @@ void clean(vector<Task> &tasklist, CAT_ptr_t cat)
 }
 
 
-void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat)
+void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf)
 {
 	LOGERR("--- PANIC, TRYING TO CLEAN ---");
 
@@ -242,11 +255,11 @@ void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat)
 
 	try
 	{
-		pcm_reset();
+		perf.clean();
 	}
 	catch (const std::exception &e)
 	{
-		LOGERR("Could not reset PCM: " << e.what());
+		LOGERR("Could not clean the performance counters: " << e.what());
 	}
 
 	for (auto &task : tasklist)
@@ -407,6 +420,7 @@ int main(int argc, char *argv[])
 	auto tasklist = vector<Task>();
 	auto coslist = vector<Cos>();
 	CAT_ptr_t cat;
+	auto perf = Perf();
 	auto catpol = std::make_shared<cat::policy::Base>(); // We want to use polimorfism, so we need a pointer
 	string config_file;
 	try
@@ -435,8 +449,6 @@ int main(int argc, char *argv[])
 		// Initial CAT configuration. It may be modified by the CAT policy.
 		cat = cat_setup(vm["cat-impl"].as<string>(), coslist);
 		catpol->set_cat(cat);
-
-		pcm_reset();
 	}
 	catch (const std::exception &e)
 	{
@@ -449,11 +461,6 @@ int main(int argc, char *argv[])
 
 	try
 	{
-		// Events to monitor
-		auto events = vector<string>{L2_HITS, L2_MISSES, L3_HITS, L3_MISSES};
-		if (vm.count("event"))
-			events = vm["event"].as<vector<string>>();
-
 		// Execute and immediately pause tasks
 		LOGINF("Launching and pausing tasks");
 		for (auto &task : tasklist)
@@ -461,12 +468,19 @@ int main(int argc, char *argv[])
 		tasks_map_to_initial_clos(tasklist, std::dynamic_pointer_cast<CATLinux>(cat));
 		LOGINF("Tasks ready");
 
+		// Setup events
+		auto events = vector<string>{"ref-cycles", "instructions"};
+		if (vm.count("event"))
+			events = vm["event"].as<vector<string>>();
+		for (auto &task : tasklist)
+			perf.setup_events(task.pid, events);
+
 		// Start doing things
 		LOGINF("Start main loop");
-		loop(tasklist, catpol, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
+		loop(tasklist, catpol, perf, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
-		clean(tasklist, catpol->get_cat());
+		clean(tasklist, catpol->get_cat(), perf);
 
 		// If no --fin-output argument, then the final stats are buffered in a stringstream and then outputted to stdout.
 		// If we don't do this and the normal output also goes to stdout, they would mix.
@@ -489,6 +503,6 @@ int main(int argc, char *argv[])
 			LOGERR(e.what() << std::endl << *st);
 		else
 			LOGERR(e.what());
-		clean_and_die(tasklist, catpol->get_cat());
+		clean_and_die(tasklist, catpol->get_cat(), perf);
 	}
 }

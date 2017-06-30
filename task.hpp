@@ -28,9 +28,7 @@ struct Task
 	std::string rundir = ""; // Set before executing the task
 	pid_t pid = 0;           // Set after executing the task
 
-	Stats stats_acumulated = Stats(); // From the start of the execution, but reseted each time it arrives to the target goal
-	Stats stats_total = Stats();      // From the start of the execution
-	Stats stats_interval   = Stats(); // Only last interval
+	Stats stats = Stats();
 
 	bool limit_reached = false; // Has the instruction limit been reached?
 	bool finished = false;      // Has the application executed completely?
@@ -42,15 +40,15 @@ struct Task
 	Task(const std::string &name, const std::string &cmd, uint32_t initial_clos, const std::vector<uint32_t> &cpus, const std::string &out, const std::string &in, const std::string &err, const std::string &skel, uint64_t max_instr, bool batch) :
 		id(ID++), name(name), cmd(cmd), initial_clos(initial_clos), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instr(max_instr), batch(batch) {}
 
-	// Reset stats and flags
+	// Reset flags
 	void reset()
 	{
 		limit_reached = false;
 		finished = false;
-		stats_acumulated = Stats();
-		stats_interval   = Stats();
+		stats.reset_counters();
 	}
 };
+typedef std::vector<Task> tasklist_t;
 
 
 enum class StatsKind
@@ -64,7 +62,7 @@ enum class StatsKind
 void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base);
 void tasks_pause(std::vector<Task> &tasklist);
 void tasks_resume(const std::vector<Task> &tasklist);
-void tasks_kill_and_restart(std::vector<Task> &tasklist);
+void tasks_kill_and_restart(std::vector<Task> &tasklist, Perf &perf, const std::vector<std::string> &events);
 void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat);
 std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
 
@@ -73,9 +71,12 @@ void task_remove_rundir(const Task &task);
 
 void task_execute(Task &task);
 void task_pause(const Task &task);
+void task_resume(const Task &task);
 void task_kill(Task &task);
 void task_restart(Task &task);
 void task_kill_and_restart(Task &task);
+bool task_exited(const Task &task); // Test if the task has exited
 
-void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep = ",");
-void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep = ",");
+void task_stats_print_headers(const Task &t, std::ostream &out, const std::string &sep = ",");
+void task_stats_print_interval(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep = ",");
+void task_stats_print_total(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep = ",");

@@ -98,7 +98,7 @@ void tasks_pause(std::vector<Task> &tasklist)
 		{
 			if (status == 0)
 			{
-				LOGINF("Task {}:{} with pid {} exited with status '{}'"_format(task.id, task.name, task.pid, status));
+				LOGWAR("Task {}:{} with pid {} exited with status '{}'"_format(task.id, task.name, task.pid, status));
 				task.completed++;
 				task.finished = true;
 			}
@@ -111,6 +111,22 @@ void tasks_pause(std::vector<Task> &tasklist)
 }
 
 
+void task_resume(const Task &task)
+{
+	pid_t pid = task.pid;
+	int status;
+
+	if (pid <= 1)
+		throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
+
+	kill(pid, SIGCONT); // Resume process
+
+	waitpid(pid, &status, WCONTINUED); // Ensure it resumed
+	if (WIFEXITED(status))
+		throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
+}
+
+
 // Resume multiple tasks
 void tasks_resume(const std::vector<Task> &tasklist)
 {
@@ -119,6 +135,10 @@ void tasks_resume(const std::vector<Task> &tasklist)
 
 	for (const auto &task : tasklist)
 	{
+		// The task has finished, is not running
+		if (task.finished)
+			continue;
+
 		pid_t pid = task.pid;
 		int status;
 
@@ -224,6 +244,7 @@ void task_execute(Task &task)
 		default:
 			usleep(100); // Wait a bit, just in case
 			task.pid = pid;
+			LOGINF("Task {}:{} with pid {} has started"_format(task.id, task.name, task.pid));
 			task_pause(task);
 			g_strfreev(argv); // Free the memory allocated for argv
 			break;
@@ -283,100 +304,75 @@ std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist)
 
 
 // Kill and restart the tasks that have reached their exec limit
-void tasks_kill_and_restart(std::vector<Task> &tasklist)
+void tasks_kill_and_restart(std::vector<Task> &tasklist, Perf &perf, const std::vector<std::string> &events)
 {
 	for (auto &task : tasklist)
 	{
-		if (task.limit_reached)
+		if (task.limit_reached || task.finished)
 		{
-			task_kill(task);
+			perf.clean(task.pid);
+			if (task.limit_reached)
+			{
+				LOGINF("Task {} ({}) limit reached, restarting"_format(task.id, task.name));
+				task_kill(task);
+			}
+			else if (task.finished)
+			{
+				LOGINF("Task {} ({}) finished, restarting"_format(task.id, task.name));
+			}
+			else
+			{
+				throw_with_trace(std::runtime_error("Should not have reached this..."));
+			}
 			task_restart(task);
-		}
-		else if (task.finished)
-		{
-			task_restart(task);
+			perf.setup_events(task.pid, events);
 		}
 	}
 }
 
 
-void task_stats_print(const Task &t, StatsKind sk, uint64_t interval, std::ostream &out, const std::string &sep)
+void task_stats_print_interval(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep)
 {
-	Stats s;
-	if (sk == StatsKind::interval)
-		s = t.stats_interval;
-	else if (sk == StatsKind::until_compl_summary)
-		s = t.stats_acumulated;
-	else if (sk == StatsKind::total_summary)
-		s = t.stats_total;
-	else
-		LOGFAT("Unknown stats kind");
-
 	out << interval << sep << std::setfill('0') << std::setw(2);
 	out << t.id << "_" << t.name << sep;
 
-	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
-		out << (t.max_instr ? (double) t.stats_total.instructions / (double) t.max_instr : 0) << sep;
-
-	out << s.us               << sep;
-	out << s.instructions     << sep;
-	out << s.cycles           << sep;
-	out << s.invariant_cycles << sep;
-	out << s.ipc              << sep;
-	out << s.ipnc             << sep;
-	out << s.rel_freq         << sep;
-	out << s.act_rel_freq     << sep;
-	out << s.l3_kbytes_occ    << sep;
-	out << s.mc_gbytes_rd     << sep;
-	out << s.mc_gbytes_wt     << sep;
-	out << s.proc_energy      << sep;
-	out << s.dram_energy;
-
-	for (const auto &kv : s.events)
-	{
-		out << sep;
-		out << acc::sum(kv.second);
-	}
+	// out << (t.max_instr ? (double) t.stats.get_current("instructions") / (double) t.max_instr : 0) << sep;
+	double completed = t.max_instr ?
+			(double) t.stats.sum("instructions") / (double) t.max_instr :
+			NAN;
+	out << completed << sep;
+	out << t.stats.data_to_string_int(sep);
 	out << std::endl;
 }
 
 
-void task_stats_print_headers(const Task &t, StatsKind sk, std::ostream &out, const std::string &sep)
+void task_stats_print_total(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep)
+{
+	out << interval << sep << std::setfill('0') << std::setw(2);
+	out << t.id << "_" << t.name << sep;
+	double completed = t.max_instr ?
+			(double) t.stats.sum("instructions") / (double) t.max_instr :
+			NAN;
+	out << completed << sep;
+	out << t.stats.data_to_string_total(sep);
+	out << std::endl;
+}
+
+
+void task_stats_print_headers(const Task &t, std::ostream &out, const std::string &sep)
 {
 	out << "interval" << sep;
 	out << "app" << sep;
-
-	if (sk == StatsKind::interval || sk == StatsKind::total_summary)
-		out << "compl" << sep;
-
-	out << "us" << sep;
-	out << "instructions" << sep;
-	out << "cycles" << sep;
-	out << "invariant_cycles" << sep;
-	out << "ipc" << sep;
-	out << "ipnc" << sep;
-	out << "rel_freq" << sep;
-	out << "act_rel_freq" << sep;
-	out << "l3_kbytes_occ" << sep;
-	out << "mc_gbytes_rd" << sep;
-	out << "mc_gbytes_wt" << sep;
-	out << "proc_energy" << sep;
-	out << "dram_energy";
-
-	for (const auto &kv : t.stats_total.events) // It should not matter which stats we iterate...
-	{
-		out << sep;
-		out << kv.first;
-	}
-
+	out << "compl" << sep;
+	out << t.stats.header_to_string(sep);
 	out << std::endl;
 }
 
 
 void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat)
 {
-	/* Mapping a task to a CLOS requires Linux CAT, it is not supported by Intel CAT.
-	 * Therefore, if the feature is used, we have to check that the pointer is valid. */
+	// Mapping a task to a CLOS requires Linux CAT, it is not supported by Intel CAT.
+	// Therefore, if the feature is used, we have to check that the pointer is valid.
 	bool initial_clos_used = false;
 	for (const auto &task : tasklist)
 	{
@@ -398,4 +394,30 @@ void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_pt
 		LOGINF("Map task {}:{} with PID {} to CLOS {}"_format(task.id, task.name, task.pid, task.initial_clos));
 		cat->add_task(task.initial_clos, task.pid);
 	}
+}
+
+
+bool task_exited(const Task &task)
+{
+	int status = 0;
+	int ret = waitpid(task.pid, &status, WNOHANG);
+	switch (ret)
+	{
+		case 0:
+			return false;
+		case -1:
+			throw_with_trace(std::runtime_error("Task {} ({}) with pid {}: error in waitpid"_format(task.id, task.name, task.pid)));
+		default:
+			if (ret != task.pid)
+				throw_with_trace(std::runtime_error("Task {} ({}) with pid {}: strange error in waitpid"_format(task.id, task.name, task.pid)));
+			break;
+	}
+
+	if (WIFEXITED(status))
+	{
+		if (WEXITSTATUS(status) != 0)
+			throw_with_trace(std::runtime_error("Task {} ({}) with pid {} exited unexpectedly with status {}"_format(task.id, task.name, task.pid, WEXITSTATUS(status))));
+		return true;
+	}
+	return false;
 }

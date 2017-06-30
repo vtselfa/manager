@@ -1,9 +1,12 @@
+#include <functional>
 #include <iomanip>
 #include <sstream>
 
 #include <boost/io/ios_state.hpp>
+#include <fmt/format.h>
 
 #include "stats.hpp"
+#include "throw-with-trace.hpp"
 
 
 #define WIN_SIZE 7
@@ -11,203 +14,285 @@
 
 namespace acc = boost::accumulators;
 
+using fmt::literals::operator""_format;
 
-Stats::Stats(const Measurement &m) :
-		us(m.us),
-		instructions(m.instructions),
-		cycles(m.cycles),
-		invariant_cycles(m.invariant_cycles),
-		ipc((double) m.instructions / (double) m.cycles),
-		ipnc((double) m.instructions / (double) m.invariant_cycles),
-		rel_freq(m.rel_freq),
-		act_rel_freq(m.act_rel_freq),
-		l3_kbytes_occ(m.l3_kbytes_occ),
-		mc_gbytes_rd(m.mc_gbytes_rd),
-		mc_gbytes_wt(m.mc_gbytes_wt),
-		proc_energy(m.proc_energy),
-		dram_energy(m.dram_energy)
+
+Stats::Stats(const std::vector<std::string> &counters)
 {
-	for (const auto &kv : m.events)
+	init(counters);
+}
+
+
+void Stats::init_derived_metrics_total(const std::vector<std::string> &counters)
+{
+	bool instructions = std::find(counters.begin(), counters.end(), "instructions") != counters.end();
+	bool cycles = std::find(counters.begin(), counters.end(), "cycles") != counters.end();
+	bool ref_cycles = std::find(counters.begin(), counters.end(), "ref-cycles") != counters.end();
+
+	if (instructions && cycles)
 	{
-		events.insert(std::make_pair(kv.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
-		events.at(kv.first)(kv.second);
+		derived_metrics_total.push_back(std::make_pair("ipc", [this]()
+		{
+			double inst = acc::sum(this->events.at("instructions"));
+			double cycl = acc::sum(this->events.at("cycles"));
+			return inst / cycl;
+		}));
+	}
+
+	if (instructions && ref_cycles)
+	{
+		derived_metrics_total.push_back(std::make_pair("ref-ipc", [this]()
+		{
+			double inst = acc::sum(this->events.at("instructions"));
+			double ref_cycl = acc::sum(this->events.at("ref-cycles"));
+			return inst / ref_cycl;
+		}));
 	}
 }
 
 
-Stats& Stats::accum(const Measurement &m)
+void Stats::init_derived_metrics_int(const std::vector<std::string> &counters)
 {
-	// Compute this metrics before modifying other things
-	rel_freq     = ((rel_freq * invariant_cycles) + (m.rel_freq * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles); // Weighted mean
-	act_rel_freq = ((act_rel_freq * invariant_cycles) + (m.act_rel_freq * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles); // Weighted mean
-
-	// Weighted mean, which assumes that all the interval had the same occupancy,
-	// which may be not true, because we only know the final result, but...
-	l3_kbytes_occ = ((l3_kbytes_occ * invariant_cycles) + (m.l3_kbytes_occ * m.invariant_cycles)) / (invariant_cycles + m.invariant_cycles);
-
-	us               += m.us;
-	instructions     += m.instructions;
-	cycles           += m.cycles;
-	invariant_cycles += m.invariant_cycles;
-	ipc              = (double) instructions / (double) cycles;     // We could also do a weighted mean
-	ipnc             = (double) instructions / (double) invariant_cycles; // We could also do a weighted mean
-	mc_gbytes_rd     += m.mc_gbytes_rd;
-	mc_gbytes_wt     += m.mc_gbytes_wt;
-	proc_energy      += m.proc_energy;
-	dram_energy      += m.dram_energy;
-	if (events.size() == 0)
+	bool instructions = std::find(counters.begin(), counters.end(), "instructions") != counters.end();
+	bool cycles = std::find(counters.begin(), counters.end(), "cycles") != counters.end();
+	bool ref_cycles = std::find(counters.begin(), counters.end(), "ref-cycles") != counters.end();
+	if (instructions && cycles)
 	{
-		for (const auto &kv : m.events)
-			events.insert(std::make_pair(kv.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
+		derived_metrics_int.push_back(std::make_pair("ipc", [this]()
+		{
+			double inst = this->get_interval("instructions");
+			double cycl = this->get_interval("cycles");
+			return inst / cycl;
+		}));
 	}
-	assert(m.events.size() == events.size());
-	for (const auto &kv : m.events)
-		events.at(kv.first)(kv.second);
+
+	if (instructions && ref_cycles)
+	{
+		derived_metrics_int.push_back(std::make_pair("ref-ipc", [this]()
+		{
+			double inst = this->get_interval("instructions");
+			double ref_cycl = this->get_interval("ref-cycles");
+			return inst / ref_cycl;
+		}));
+	}
+}
+
+
+void Stats::init(const std::vector<std::string> &counters)
+{
+	assert(!initialized);
+
+	for (const auto &c : counters)
+		events.insert(std::make_pair(c, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
+
+	init_derived_metrics_int(counters);
+	init_derived_metrics_total(counters);
+
+	// Test der metrics
+	if (derived_metrics_int.size() != derived_metrics_total.size())
+		throw_with_trace(std::runtime_error("Different number of derived metrics for int ({}) and total ({})"_format(
+				derived_metrics_int.size(), derived_metrics_total.size())));
+	for(const auto &der : derived_metrics_int)
+	{
+		auto it = std::find_if(derived_metrics_total.begin(), derived_metrics_total.end(),
+				[&der](const auto& tuple) {return tuple.first == der.first;});
+		if (it == derived_metrics_total.end())
+			throw_with_trace(std::runtime_error("Different derived metrics for int and total results"));
+	}
+
+	for (const auto &der : derived_metrics_int)
+		events.insert(std::make_pair(der.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
+
+	// Store the names of the counters
+	names = counters;
+
+	initialized = true;
+}
+
+
+Stats& Stats::accum(const counters_t &counters)
+{
+	assert(initialized);
+
+	last = curr;
+	curr = counters;
+
+	const auto &curr_by_id = curr.get<by_id>();
+	const auto &last_by_name = last.get<by_name>();
+
+	for (const auto &c : curr_by_id)
+	{
+		auto last_value_it = last_by_name.find(c.name);
+		double value = c.snapshot || last.size() == 0 ?
+				c.value :
+				c.value - last_value_it->value;
+		assert(value >= 0);
+		events.at(c.name)(value); // Add it to the accumulator
+	}
+
+	// Compute and add derived metrics
+	for (const auto &der : derived_metrics_int)
+		events.at(der.first)(der.second());
+
+	counter++;
+
 	return *this;
-
 }
 
 
-std::string stats_final_header_to_string(const Stats &s, const std::string &sep)
+std::string Stats::header_to_string(const std::string &sep) const
 {
-	std::string result =
-			"app"              + sep +
-			"us"               + sep +
-			"instructions"     + sep +
-			"cycles"           + sep +
-			"invariant_cycles" + sep +
-			"ipc"              + sep +
-			"ipnc"             + sep +
-			"rel_freq"         + sep +
-			"act_rel_freq"     + sep +
-			"l3_kbytes_occ"    + sep +
-			"mc_gbytes_rd"     + sep +
-			"mc_gbytes_wt"     + sep +
-			"proc_energy"      + sep +
-			"dram_energy";
+	if (!names.size()) return "";
 
-	for (const auto &kv : s.events)
+	std::stringstream ss;
+	auto it = names.begin();
+	ss << *it;
+	it++;
+	for (; it != names.end(); it++)
+		ss << sep << *it;
+	for (const auto &der : derived_metrics_int) // Int, snapshot and total have the same derived metrics
+		ss << sep << der.first;
+	return ss.str();
+}
+
+
+// Some of the counters are collected as snapshots of the state of the system (i.e. the cache space occupation).
+// This is taken into account to compute the value of the metric for the interval. If force_snapshot is true, then
+// the function prints the value of the counter. If not, it prints the difference with the previous interval, unless
+// the metric is collected as an snapshot.
+std::string Stats::data_to_string_total(const std::string &sep) const
+{
+	std::stringstream ss;
+
+	assert(curr.size() > 0);
+
+	const auto &name_index = curr.get<by_name>();
+	for (size_t i = 0; i < names.size(); i++)
 	{
-		result += sep;
-		result += kv.first;
+		const auto &name = names[i];
+		const accum_t &event = events.at(name);
+		const auto &c = name_index.find(name);
+		double value = c->snapshot ?
+				acc::mean(event) :
+				acc::sum(event);
+		ss << value;
+		if (i < names.size() - 1)
+			ss << sep;
 	}
-	return result;
-}
 
-
-std::string stats_header_to_string(const Stats &s, const std::string &sep)
-{
-	return "interval" + sep + stats_final_header_to_string(s, sep);
-}
-
-
-std::string stats_to_string(const Stats &s, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
-{
-	std::ostringstream out;
-	if (interval != -1ULL)
-		out << interval       << sep << std::setfill('0') << std::setw(2);
-	out << id << "_" << app   << sep;
-	out << s.us               << sep;
-	out << s.instructions     << sep;
-	out << s.cycles           << sep;
-	out << s.invariant_cycles << sep;
-	out << s.ipc              << sep;
-	out << s.ipnc             << sep;
-	out << s.rel_freq         << sep;
-	out << s.act_rel_freq     << sep;
-	out << s.l3_kbytes_occ    << sep;
-	out << s.mc_gbytes_rd     << sep;
-	out << s.mc_gbytes_wt     << sep;
-	out << s.proc_energy      << sep;
-	out << s.dram_energy;
-	for (const auto &kv : s.events)
+	// Derived metrics
+	for (auto it = derived_metrics_total.cbegin(); it != derived_metrics_total.cend(); it++)
 	{
-		out << sep;
-		out << acc::sum(kv.second);
+		double value = it->second();
+		ss << sep << value;
 	}
-	return out.str();
+
+	return ss.str();
 }
 
 
-void stats_final_print_header(const Stats &s, std::ostream &out, const std::string &sep)
+std::string Stats::data_to_string_int(const std::string &sep) const
 {
-	out << stats_final_header_to_string(s, sep) << std::endl;
+	std::stringstream ss;
+	const auto &curr_id_idx = curr.get<by_id>();
+	const auto &last_id_idx = last.get<by_id>();
+
+	assert(curr.size() > 0);
+
+	// App has just started, no last data
+	if (last.size() == 0)
+	{
+		auto it = curr_id_idx.cbegin();
+		while (it != curr_id_idx.cend())
+		{
+			ss << it->value;
+			it++;
+			if (it != curr_id_idx.end())
+				ss << sep;
+		}
+	}
+
+	// We have data from the last interval
+	else
+	{
+		assert(curr.size() == last.size());
+		auto curr_it = curr_id_idx.cbegin();
+		auto last_it = last_id_idx.cbegin();
+		while (curr_it != curr_id_idx.cend() && last_it != last_id_idx.cend())
+		{
+			const Counter &c = *curr_it;
+			const Counter &l = *last_it;
+			assert(c.id == l.id);
+			assert(c.name == l.name);
+			double value = c.snapshot ?
+					c.value :
+					c.value - l.value;
+			ss << value;
+			curr_it++;
+			last_it++;
+
+			if (curr_it != curr.cend())
+				ss << sep;
+		}
+	}
+
+	// Derived metrics
+	for (auto it = derived_metrics_int.cbegin(); it != derived_metrics_int.cend(); it++)
+	{
+		double value = it->second();
+		ss << sep << value;
+	}
+
+	return ss.str();
 }
 
 
-void stats_print_header(const Stats &s, std::ostream &out, const std::string &sep)
+double Stats::get_interval(const std::string &name) const
 {
-	out << stats_header_to_string(s, sep) << std::endl;
+	const auto &curr_index = curr.get<by_name>();
+	const auto &last_index = last.get<by_name>();
+
+	const auto c = curr_index.find(name);
+	const auto l = last_index.find(name);
+
+
+	if (last.size() != curr.size() && last.size() != 0)
+		throw_with_trace(std::runtime_error("Inconsistency between current data and last interval data"));
+
+	if (c == curr_index.end())
+		throw_with_trace(std::runtime_error("Missing current data"));
+
+	double value = c->snapshot || last.size() == 0 ?
+			c->value :
+			c->value - l->value;
+	return value;
 }
 
 
-void stats_print(const Stats &s, std::ostream &out, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep)
+double Stats::get_current(const std::string &name) const
 {
-	out << stats_to_string(s, id, app, interval, sep) << std::endl;
+	const auto &curr_index = curr.get<by_name>();
+	auto it = curr_index.find(name);
+	if (it == curr_index.end())
+		throw_with_trace(std::runtime_error("Event not monitorized '{}'"_format(name)));
+	return it->value;
 }
 
 
-// Detect transcient errors in PCM results
-// They happen sometimes... Good work, Intel.
-bool stats_are_wrong(const Stats &s)
+double Stats::sum(const std::string &name) const
 {
-	const double approx_mhz = (double) s.cycles / (double) s.us;
-	const double approx_inv_mhz = (double) s.cycles / (double) s.us;
-
-	if (approx_mhz > 10000 || approx_inv_mhz > 10000)
-		return true;
-
-	if (s.ipnc > 100 || s.ipnc < 0)
-		return true;
-
-	if (s.ipc > 100 || s.ipc < 0)
-		return true;
-
-	if (s.rel_freq < 0 || s.act_rel_freq < 0)
-		return true;
-
-	if (s.l3_kbytes_occ > 1000000) // More that one GB...
-		return true;
-
-	if (s.mc_gbytes_rd < 0 || s.mc_gbytes_wt < 0)
-		return true;
-
-	if (s.proc_energy < 0 || s.dram_energy < 0)
-		return true;
-
-	return false;
+	return acc::sum(events.at(name));
 }
 
 
-// Detect transcient errors in PCM results
-// They happen sometimes... Good work, Intel.
-bool measurements_are_wrong(const Measurement &m)
+const counters_t& Stats::get_current_counters() const
 {
-	const double ipc = (double) m.instructions / (double) m.cycles;
-	const double ipnc = (double) m.instructions / (double) m.invariant_cycles;
-	const double approx_mhz = (double) m.cycles / (double) m.us;
-	const double approx_inv_mhz = (double) m.cycles / (double) m.us;
+	return curr;
+}
 
-	if (approx_mhz > 10000 || approx_inv_mhz > 10000)
-		return true;
 
-	if (ipnc > 100 || ipnc < 0)
-		return true;
-
-	if (ipc > 100 || ipc < 0)
-		return true;
-
-	if (m.rel_freq < 0 || m.act_rel_freq < 0)
-		return true;
-
-	if (m.l3_kbytes_occ > 1000000) // More than one GB...
-		return true;
-
-	if (m.mc_gbytes_rd < 0 || m.mc_gbytes_wt < 0)
-		return true;
-
-	if (m.proc_energy < 0 || m.dram_energy < 0)
-		return true;
-
-	return false;
+void Stats::reset_counters()
+{
+	last = counters_t();
+	curr = counters_t();
 }

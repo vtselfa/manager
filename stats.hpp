@@ -4,10 +4,6 @@
 #include <map>
 #include <ostream>
 
-
-// Global variables
-const int MAX_EVENTS = 4;
-
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics/rolling_mean.hpp>
 #include <boost/accumulators/statistics/rolling_window.hpp>
@@ -15,51 +11,12 @@ const int MAX_EVENTS = 4;
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/variance.hpp>
 
+#include "events-perf.hpp"
 
-struct Measurement
+
+class Stats
 {
-	// Core stats
-	uint64_t us = 0; // Microseconds
-	uint64_t instructions = 0;
-	uint64_t cycles = 0;
-	uint64_t invariant_cycles = 0;
-	double rel_freq = 0; // Frequency relative to the nominal CPU frequency
-	double act_rel_freq = 0;
-	uint64_t l3_kbytes_occ = 0;
-
-	// System stats i.e. equal for all the cores
-	double mc_gbytes_rd = 0; // In GB
-	double mc_gbytes_wt = 0; // In GB
-	double proc_energy = 0;  // In joules
-	double dram_energy = 0;  // In joules
-
-	// Core events (event name, data)
-	std::map<std::string, uint64_t> events;
-
-	Measurement() = default;
-};
-
-
-struct Stats
-{
-	// Core stats
-	uint64_t us = 0; // Microseconds
-	uint64_t instructions = 0;
-	uint64_t cycles = 0;
-	uint64_t invariant_cycles = 0;
-	double ipc = 0;
-	double ipnc = 0;     // Intructions per nominal cycles
-	double rel_freq = 0; // Frequency relative to the nominal CPU frequency
-	double act_rel_freq = 0;
-	uint64_t l3_kbytes_occ = 0;
-
-	// System stats i.e. equal for all the cores
-	double mc_gbytes_rd = 0; // In GB
-	double mc_gbytes_wt = 0; // In GB
-	double proc_energy = 0;  // In joules
-	double dram_energy = 0;  // In joules
-
-	// Core events
+	// Declare the 'accum_t' typedef
 	#define ACC boost::accumulators
 	typedef ACC::accumulator_set <
 		double,
@@ -69,21 +26,51 @@ struct Stats
 			ACC::tag::variance,
 			ACC::tag::rolling_mean>> accum_t;
 	#undef ACC
+
+	// Set to true when the 'init' method is called
+	bool initialized = false;
+
+	// Times that the 'accum' method has been called
+	uint64_t counter = 0;
+
+	// Last and current counter values that have been passed to the 'accum' method
+	counters_t last;
+	counters_t curr;
+
+	// Vectors with lambdas that compute derived stats
+	std::vector<
+		std::pair<
+			std::string,
+			std::function<double()>
+		>
+	> derived_metrics_int, derived_metrics_total;
+
+	// Vector with the names of the counters that will be accumulated
+	std::vector<std::string> names;
+
+	std::string data_to_string(const std::string &sep, bool force_snapshot) const;
+
+	public:
+
 	std::map<std::string, accum_t> events;
 
 	Stats() = default;
-	Stats(const Measurement &m);
+	Stats(const std::vector<std::string> &counters);
 
-	Stats& accum(const Measurement &m);
-	friend Stats operator+(Stats a, const Stats &b);
+	void init(const std::vector<std::string> &counters);
+	void init_derived_metrics_total(const std::vector<std::string> &counters);
+	void init_derived_metrics_int(const std::vector<std::string> &counters);
+	Stats& accum(const counters_t &c);
+
+	void reset_counters();
+
+	double get_interval(const std::string &name) const;
+	double get_current(const std::string &name) const;
+	const counters_t& get_current_counters() const;
+
+	double sum(const std::string &name) const;
+
+	std::string header_to_string(const std::string &sep) const;
+	std::string data_to_string_int(const std::string &sep) const;
+	std::string data_to_string_total(const std::string &sep) const;
 };
-
-
-std::string stats_final_header_to_string(const Stats &s, const std::string &sep);
-std::string stats_header_to_string(const Stats &s, const std::string &sep=",");
-std::string stats_to_string(const Stats &s, uint32_t id, const std::string &app, uint64_t interval, const std::string &sep=",");
-void stats_final_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
-void stats_print_header(const Stats &s, std::ostream &out, const std::string &sep=",");
-void stats_print(const Stats &s, std::ostream &out, uint32_t id, const std::string &app, uint64_t interval = -1ULL, const std::string &sep=",");
-bool stats_are_wrong(const Stats &s);
-bool measurements_are_wrong(const Measurement &m);

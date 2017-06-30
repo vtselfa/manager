@@ -1,9 +1,10 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <set>
-#include <vector>
 #include <stdexcept>
+#include <vector>
 
 #include "throw-with-trace.hpp"
 
@@ -28,7 +29,14 @@ class Point
 
 	// Euclidian distance between two points
 	double distance(const Point &o) const;
+
+	static auto create(size_t id, const std::vector<double>& values)
+	{
+		return std::make_shared<Point>(id, values);
+	}
 };
+typedef std::shared_ptr<Point> point_ptr_t;
+typedef std::vector<point_ptr_t> points_t;
 
 
 // Type for storing two point ids and the distance between the two points
@@ -37,8 +45,8 @@ typedef
 	<
 		std::pair
 		<
-			const Point *,
-			const Point *
+			const point_ptr_t,
+			const point_ptr_t
 		>,
 		double
 	> P2PDist;
@@ -49,7 +57,7 @@ class Cluster
 	private:
 
 	std::vector<double> centroid;
-	std::set<const Point *> points;
+	std::set<point_ptr_t> points;
 
 	public:
 
@@ -70,11 +78,11 @@ class Cluster
 		this->centroid = cent;
 	}
 
-	void addPoint(const Point *p);
-	void removePoint(const Point *p);
+	void addPoint(const point_ptr_t p);
+	void removePoint(const point_ptr_t p);
 	void updateMeans();
 	const std::vector<double>& getCentroid() const { return centroid; }
-	const auto& getPoints() const { return points; }
+	const std::set<point_ptr_t>& getPoints() const { return points; }
 	std::string to_string() const;
 
 	bool disjoint(const Cluster &c) const;
@@ -82,15 +90,15 @@ class Cluster
 	// Cluster to point distances
 
 	// Vector of distances of all the points in the cluster to p, itself excluded, if it's in the cluster
-	std::vector<P2PDist> pairwise_distance(const Point &p) const;
+	std::vector<P2PDist> pairwise_distance(const point_ptr_t p) const;
 	// Distance to the centroid
 	double centroid_distance(const Point &p) const;
 	// Mean distance from p to all the points in the cluster, itself excluded, if it's in the cluster
-	double mean_pairwise_distance(const Point &p) const;
+	double mean_pairwise_distance(const point_ptr_t p) const;
 	// Min distance from p to all the points in the cluster, itself excluded, if it's in the cluster
-	double min_pairwise_distance(const Point &p) const;
+	double min_pairwise_distance(const point_ptr_t p) const;
 	// Max distance from p to all the points in the cluster, itself excluded, if it's in the cluster
-	double max_pairwise_distance(const Point &p) const;
+	double max_pairwise_distance(const point_ptr_t p) const;
 
 
 	// Intercluster distance measurement
@@ -116,6 +124,7 @@ class Cluster
 	// Mean distance of all the points to the cluster centroid
 	double mean_centroid_distance() const;
 };
+typedef std::vector<Cluster> clusters_t;
 
 
 enum class EvalClusters
@@ -124,7 +133,6 @@ enum class EvalClusters
 	silhouette
 };
 EvalClusters str_to_evalclusters(std::string str);
-
 
 
 class KMeans
@@ -137,10 +145,10 @@ class KMeans
 
 	// Put an initial Point in them
 	static
-	void initClusters(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters);
+	void initClusters(size_t k, const points_t &points, std::vector<Cluster> &clusters);
 
 	static
-	void reinitCluster(const std::vector<Point> &points, Cluster &c);
+	void reinitCluster(const points_t &points, Cluster &c);
 
 	// Computes the Silhouette index
 	static
@@ -153,10 +161,10 @@ class KMeans
 
 	// Clusterize
 	static
-	size_t clusterize(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
+	size_t clusterize(size_t k, const points_t &points, std::vector<Cluster> &clusters, size_t max_iter);
 
 	static
-	size_t clusterize_optimally(size_t max_k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters);
+	size_t clusterize_optimally(size_t max_k, const points_t &points, std::vector<Cluster> &clusters, size_t max_iter, enum EvalClusters eval_clusters);
 
 	static
 	std::string to_string(const std::vector<Cluster> &clusters);
