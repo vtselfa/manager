@@ -12,7 +12,7 @@ echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /
 echo 2200000 | tee /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq > /dev/null
 
 # Save manager binary
-cp /home/viselol/manager/manager .
+cp ${HOME}/manager/manager .
 
 EVENTS=${EVENTS-cpu/umask=0x04,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_HIT/ -e cpu/umask=0x20,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_MISS/ -e cpu/umask=0x04,event=0xA3,name=CYCLE_ACTIVITY.STALLS_TOTAL,cmask=4/ -e cpu/umask=0x06,event=0xA3,name=CYCLE_ACTIVITY.STALLS_LDM_PENDING,cmask=6/}
 
@@ -42,7 +42,8 @@ for ((REP=${INI_REP};REP<${MAX_REP};REP++)); do
 			echo $WL $((REP+1))/${MAX_REP} 0x${MASK}
 			python3 ${DIR}/makoc.py template.mako --lookup "${DIR}/templates" --defs '{apps: ['$(join_by , ${WL[@]})'], mask: '$MASK'}'> ${CONFIG} || exit 1
 
-			./manager --config ${CONFIG} --ti ${INT} --mi ${MAX} -e ${EVENTS} -o ${OUT} --fin-out ${FIN_OUT} --total-out ${TOT_OUT} --flog-min dbg --log-file $LOG
+			./manager --config ${CONFIG} --ti ${INT} --mi ${MAX} -e ${EVENTS} -o ${OUT} --fin-out ${FIN_OUT} --total-out ${TOT_OUT} --flog-min dbg --log-file $LOG &&
+			rm -r run/
 
 		done < $1
 	done
