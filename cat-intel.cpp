@@ -3,6 +3,7 @@
 
 #include "cat-intel.hpp"
 #include "throw-with-trace.hpp"
+#include "log.hpp"
 
 
 void CAT::init()

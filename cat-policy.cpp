@@ -15,6 +15,11 @@
 #include "log.hpp"
 
 
+#define L3_HITS "MEM_LOAD_UOPS_RETIRED.L3_HIT"
+#define L3_MISSES "MEM_LOAD_UOPS_RETIRED.L3_MISS"
+#define STALLS_TOTAL "CYCLE_ACTIVITY.STALLS_TOTAL"
+
+
 namespace cat
 {
 namespace policy
@@ -23,6 +28,308 @@ namespace policy
 
 namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
+using std::string;
+
+
+void NoPart::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
+{
+	// Apply only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+		return;
+
+	double ipcTotal = 0;
+
+	LOGINF("CAT Policy name: NoPart");
+	LOGINF("Using stats {}"_format(stats));
+
+	// GATHER DATA
+	for (uint32_t t = 0; t < tasklist.size(); t++)
+	{
+		const Task &task = tasklist[t];
+		std::string taskName = task.executable;
+		LOGINF("Task name = {}"_format(taskName));
+
+		uint64_t l3_hits, cycles, l3_occup;
+		double ipc, hits_per_occup;
+
+		assert((stats == "total") | (stats == "interval"));
+
+		if (stats == "total")
+		{
+			// L3 hits
+			l3_hits = acc::sum(task.stats_total.events.at(L3_HITS));
+
+			// Cycles and IPC
+			cycles = task.stats_total.cycles;
+			ipc = task.stats_total.ipc;
+
+			// L3 occupation
+			l3_occup = task.stats_total.l3_kbytes_occ;
+		}
+		else if (stats == "interval")
+		{
+			// L3 hits
+			l3_hits = acc::sum(task.stats_interval.events.at(L3_HITS));
+
+			// Cycles and IPC
+			cycles = task.stats_interval.cycles;
+			ipc = task.stats_interval.ipc;
+
+			// L3 occupation
+			l3_occup = task.stats_interval.l3_kbytes_occ;
+		}
+
+
+		ipcTotal += ipc;
+
+		if (l3_occup == 0)
+		{
+			LOGERR("l3_occup = 0 -> hits_per_occup = 0");
+			hits_per_occup = 0;
+		}
+		else
+		{
+			hits_per_occup = l3_hits / l3_occup;
+		}
+
+		LOGINF("Task {} (COS {}) has {} L3 hits, {} KB L3 occup, {} L3 hits/occup"_format(
+				taskName, cat.get_cos_of_cpu(task.cpu), l3_hits, l3_occup, hits_per_occup));
+	}
+	LOGINF("IPC total of interval {} = {:.2f}"_format(current_interval, ipcTotal));
+}
+
+
+void HitsGain::subtract_way(uint32_t core)
+{
+	uint64_t newMask;
+	size_t cos = cat.get_cos_of_cpu(core);
+	uint64_t mask = cat.get_cos_mask(cos);
+	//LOGINF("S_W: Cos {} before has mask {:#x} "_format(cos,mask));
+
+	// shift 1 bit to the left the current mask
+	newMask = ((mask << ways_increment) & mask) | 0xC0000;
+	//LOGINF("S_W: Cos {} after has mask {:#x} "_format(cos,newMask));
+	cat.set_cos_mask(cos, newMask);
+
+	LOGINF("COS number {} has mask {:#x} after subtracting one way "_format(cos, cat.get_cos_mask(cos)));
+}
+
+
+void HitsGain::add_way(uint32_t core)
+{
+	uint64_t newMask;
+	size_t cos = cat.get_cos_of_cpu(core);
+	uint64_t mask = cat.get_cos_mask(cos);
+
+	// shift 1 bit to the right the current mask OR current mask
+	newMask = (mask >> ways_increment) | mask;
+	cat.set_cos_mask(cos, newMask);
+
+	LOGINF("COS number {} has mask {:#x} after adding one way "_format(cos, cat.get_cos_mask(cos)));
+}
+
+
+void HitsGain::undo_changes(const std::vector<pair> &v)
+{
+	for (const auto &item : v)
+	{
+		uint32_t core = std::get<0>(item);
+		uint64_t mask = std::get<1>(item);
+		size_t cos = cat.get_cos_of_cpu(core);
+		cat.set_cos_mask(cos, mask);
+		LOGINF("COS number {} has mask {:#x} after undoing changes "_format(cos, mask));
+	}
+
+	LOGINF("Changes from previous interval undone");
+}
+
+
+void HitsGain::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
+{
+
+	// Apply only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+		return;
+
+	// (Core, hits) tuple
+	typedef std::tuple<uint32_t, uint64_t> pair;
+	auto v = std::vector<pair>();
+
+	double ipcTotal = 0;
+
+	LOGINF("CAT Policy name: HitsGain");
+	LOGINF("Using stats {}"_format(stats));
+
+	// GATHER DATA
+	for (uint32_t t = 0; t < tasklist.size(); t++)
+	{
+		const Task &task = tasklist[t];
+		std::string taskName = task.executable;
+
+		uint64_t l3_hits, cycles, l3_occup;
+		double ipc, hits_per_occup;
+
+		assert((stats == "total") | (stats == "interval"));
+
+		if (stats == "total")
+		{
+			// L3 hits
+			l3_hits = acc::sum(task.stats_total.events.at(L3_HITS));
+
+			// Cycles and IPC
+			cycles = task.stats_total.cycles;
+			ipc = task.stats_total.ipc;
+
+			// L3 occupation
+			l3_occup = task.stats_total.l3_kbytes_occ;
+		}
+		else if (stats == "interval")
+		{
+			// L3 hits
+			l3_hits = acc::sum(task.stats_interval.events.at(L3_HITS));
+
+			// Cycles and IPC
+			cycles = task.stats_interval.cycles;
+			ipc = task.stats_interval.ipc;
+
+			// L3 occupation
+			l3_occup = task.stats_interval.l3_kbytes_occ;
+		}
+
+		ipcTotal += ipc;
+
+		if (l3_occup == 0)
+		{
+			LOGERR("l3_occup = 0 -> hits_per_occup = 0 -> NO CHANGES WILL BE APPLIED");
+			hits_per_occup = 0;
+			// don't modify the mask of the CAT in this interval
+			noChange[task.cpu] = true;
+		}
+		else
+		{
+			hits_per_occup = l3_hits / l3_occup;
+		}
+
+		// LOGINF("l3_hits {} / l3_occup {} = hits_per_occup {} "_format(l3_hits, l3_occup,
+		// hits_per_occup));
+		v.push_back(std::make_pair(task.cpu, hits_per_occup));
+
+
+		LOGINF("Task {} (COS {}) has {} L3 hits, {} KB L3 occup, {} L3 hits/occup"_format(
+				taskName, cat.get_cos_of_cpu(task.cpu), l3_hits, l3_occup, hits_per_occup));
+	}
+
+	LOGINF("IPC total of interval {} = {:.2f}"_format(current_interval, ipcTotal));
+
+	// UNDO CHANGES ?
+	// compare ipcTotal of this interval with previous interval with a 5% threshold
+	// if worse && mask changed in previous interval --> undo changes
+	LOGINF("ipcTotalPrev {}, (ipcTotalPrev*0.995) {}"_format(ipcTotalPrev, (ipcTotalPrev*0.995)));
+	if (ipcTotal < (ipcTotalPrev*0.995) && maskModified)
+	{
+		LOGINF("Worst total IPC than previous interval -->");
+		undo_changes(vPrev);
+		maskModified = false;
+	}
+	else
+	{
+		// Save current CAT configuration in case of needing to undo
+		// changes in the next interval
+		vPrev.clear();
+		for (auto const &item : v)
+		{
+			uint32_t core = std::get<0>(item);
+			size_t cosToSave = cat.get_cos_of_cpu(core);
+			uint64_t maskToSave = cat.get_cos_mask(cosToSave);
+			vPrev.push_back(std::make_pair(core, maskToSave));
+		}
+
+		// PROCESS DATA
+		// Sort in descending order by hits
+		std::sort(begin(v), end(v),
+				[](const pair &t1, const pair &t2) { return std::get<1>(t1) > std::get<1>(t2); });
+
+		// APPLY MASK CHANGES
+		// Allow only 8 apps
+		uint32_t size_v = v.size();
+		//LOGINF("Size of vector v = {}"_format(size_v));
+		assert(size_v==8);
+
+		// 3 apps with highest num of hits: add one way, if number of ways is lower than 20
+		if(!noChange[std::get<0>(v[0])]){
+			add_way(std::get<0>(v[0]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[0]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[0])] = false;
+		}
+
+		if(!noChange[std::get<0>(v[1])]){
+			add_way(std::get<0>(v[1]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[1]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[1])] = false;
+		}
+
+		if(!noChange[std::get<0>(v[2])]){
+			add_way(std::get<0>(v[2]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[2]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[2])] = false;
+		}
+
+
+		// 3 apps with lowest num of hits: subtract one way, if number of ways is greater than 2
+		if(!noChange[std::get<0>(v[7])]){
+			subtract_way(std::get<0>(v[7]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[7]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[7])] = false;
+		}
+
+		if(!noChange[std::get<0>(v[6])]){
+			subtract_way(std::get<0>(v[6]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[6]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[6])] = false;
+		}
+
+		if(!noChange[std::get<0>(v[5])]){
+			subtract_way(std::get<0>(v[5]));
+		}else{
+			size_t cosn = cat.get_cos_of_cpu(std::get<0>(v[5]));
+			uint64_t maskn = cat.get_cos_mask(cosn);
+			LOGINF("COS number {} has mask {:#x} after NO change "_format(cosn, maskn));
+			noChange[std::get<0>(v[5])] = false;
+		}
+
+		// other 2 apps are left unchanged
+		size_t cos3 = cat.get_cos_of_cpu(std::get<0>(v[3]));
+		uint64_t mask3 = cat.get_cos_mask(cos3);
+		size_t cos4 = cat.get_cos_of_cpu(std::get<0>(v[4]));
+		uint64_t mask4 = cat.get_cos_mask(cos4);
+
+		LOGINF("COS number {} has mask {:#x} after NO change "_format(cos3, mask3));
+		LOGINF("COS number {} has mask {:#x} after NO change "_format(cos4, mask4));
+
+		//set noChange to false if it ws true
+		if(noChange[std::get<0>(v[3])]){ noChange[std::get<0>(v[3])] = false; }
+		if(noChange[std::get<0>(v[4])]){ noChange[std::get<0>(v[4])] = false; }
+
+		// set modified flag to true and store total IPC
+		maskModified = true;
+		ipcTotalPrev = ipcTotal;
+	}
+}
 
 
 void Slowfirst::set_masks(const std::vector<uint64_t> &masks)

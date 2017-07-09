@@ -29,8 +29,41 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 
 	if (kind == "none")
 		return std::make_shared<cat::policy::Base>();
+	
+	if (kind == "np" ) // NoPArt Policy
+        {
+		LOGINF("Using NoPart (np) CAT policy");
+		
+                // Check that required fields exist
+                for (string field : {"every", "stats"})
+                        if (!policy[field])
+                                throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
 
-	if (kind == "sf" )
+                // Read fields
+                uint64_t every = policy["every"].as<uint64_t>();
+		string stats = policy["stats"].as<string>();
+
+                return std::make_shared<cat::policy::NoPart>(every, stats);
+        }
+	
+	else if (kind == "hg" ) // HitsGain Policy
+        {
+                LOGINF("Using HitsGain (hg) CAT policy");
+
+                // Check that required fields exist
+                for (string field : {"every", "ways_increment", "stats"})
+                        if (!policy[field])
+                                throw std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field");
+		
+                // Read fields
+                uint64_t every = policy["every"].as<uint64_t>();
+		int ways_increment = policy["ways_increment"].as<int>();
+		string stats = policy["stats"].as<string>();
+
+                return std::make_shared<cat::policy::HitsGain>(every, ways_increment, stats);
+        }
+
+	else if (kind == "sf" )
 	{
 		LOGINF("Using Slowfirst (sf) CAT policy");
 

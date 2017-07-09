@@ -16,7 +16,7 @@ namespace cat
 const uint32_t min_num_ways = 2;
 const uint32_t max_num_ways = 20;
 const uint32_t complete_mask = ~(-1U << max_num_ways);
-
+typedef std::tuple<uint32_t, uint64_t> pair;
 
 namespace policy
 {
@@ -43,6 +43,63 @@ class Base
 	// The base class does nothing by default.
 	virtual void apply(uint64_t, const std::vector<Task> &) {}
 };
+
+
+// Gathers sames measurements as HitsGain
+// but makes no changes to CAT configuration
+class NoPart: public Base
+{
+	protected:
+
+	uint64_t every = -1;
+	std::string stats = "total";
+
+	public:
+
+	virtual ~NoPart() = default;
+
+	NoPart(uint64_t every, std::string stats) : Base(), every(every), stats(stats)
+	{}
+
+	virtual void apply(uint64_t, const std::vector<Task> &);
+};
+typedef NoPart NP;
+
+// Sorts applications by number of hits in L3 and recompensates those with
+// more hits, i.e., those who have made best use of its ways and
+// penalizes those who have less number of hits
+class HitsGain: public Base
+{
+	protected:
+
+	uint64_t every = -1;
+	int ways_increment = 1;
+	std::string stats = "total";
+	//flag to control if changes made in HitsGain policy
+	bool maskModified = false;
+	//variable to store IPC to use in next interval
+	double ipcTotalPrev;
+	//vector to store previous list of cores, ways
+	std::vector<pair> vPrev;
+	//array indexed by core num -> true if core has l3_occup = 0
+	bool noChange [8] = {false, false, false, false, false, false, false, false};
+
+	public:
+
+	virtual ~HitsGain() = default;
+
+	HitsGain(uint64_t every, int ways_increment, std::string stats) : Base(), every(every), ways_increment(ways_increment), stats(stats){}
+
+	//configure CAT
+	void undo_changes(const std::vector<pair> &v);
+	void add_way(uint32_t core);
+	void subtract_way(uint32_t core);
+
+	// metodo apply
+	virtual void apply(uint64_t, const std::vector<Task> &);
+};
+typedef HitsGain HG;
+
 
 
 // Sort applications by slowdown and assign the slowest to COS3, the second most slowest
