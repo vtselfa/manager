@@ -41,6 +41,7 @@ class CATLinuxTest : public CATLinux
 	FRIEND_TEST(CATLinuxConsistency, AddCPU);
 	FRIEND_TEST(CATLinuxConsistency, Reset);
 	FRIEND_TEST(CATLinuxConsistency, Init);
+	FRIEND_TEST(CATLinuxConsistency, NonContiguousMask);
 };
 
 class CATLinuxAPI : public testing::Test
@@ -229,4 +230,20 @@ TEST_F(CATLinuxConsistency, Init)
 		ASSERT_EQ(lcat.get_clos(cpu), 0U);
 		ASSERT_EQ(icat.get_clos(cpu), 0U);
 	}
+}
+
+// Test for support of non-contiguous masks.
+// Needs a patched kernel and a patched Intel library
+TEST_F(CATLinuxConsistency, NonContiguousMask)
+{
+	size_t cbm = 0xF0F;
+	int clos;
+
+	clos = 0;
+	lcat.set_cbm(clos, cbm);
+	ASSERT_EQ(lcat.get_cbm(clos), cbm);
+
+	clos = 1;
+	icat.set_cbm(clos, cbm);
+	ASSERT_EQ(icat.get_cbm(clos), cbm);
 }
