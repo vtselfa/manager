@@ -23,6 +23,8 @@ def main():
 
     # For each workload...
     for wl_id, wl in enumerate(workloads):
+        if isinstance(wl, str):
+            wl = [wl]
         process_intdata(wl, args.input_dir, args.output_dir)
         process_data(wl, args.input_dir, args.output_dir)
 
@@ -32,15 +34,15 @@ def process_intdata(workload, input_dir, output_dir):
     wl_name = "-".join(workload)
     files = ["{}/{}".format(input_dir, f) for f in os.listdir(input_dir) if re.match(r'{}_[0-9]+.csv$'.format(wl_name), f)]
 
-    dfs = read_and_merge(files, ["interval", "app", "core"])
+    dfs = read_and_merge(files, ["interval", "app"])
 
     # Store csv
     dfs.to_csv("{}/{}.csv".format(output_dir, wl_name))
 
     # Store a csv per app
     os.makedirs(osp.abspath("{}/{}".format(output_dir, wl_name)), exist_ok=True)
-    for (app, core), df in dfs.groupby(level=[1, 2]):
-        filename = "{}/{}/{}.{}.csv".format(output_dir, wl_name, app, core)
+    for app, df in dfs.groupby(level=1):
+        filename = "{}/{}/{}.csv".format(output_dir, wl_name, app)
         df.to_csv(filename)
 
 
@@ -50,7 +52,7 @@ def process_data(workload, input_dir, output_dir):
         wl_name = "-".join(workload)
         files = ["{}/{}".format(input_dir, f) for f in os.listdir(input_dir) if re.match(r'{}_[0-9]+_{}.csv$'.format(wl_name, kind), f)]
 
-        dfs = read_and_merge(files, ["app", "core"])
+        dfs = read_and_merge(files, ["app"])
 
         # Store csv
         dfs.to_csv("{}/{}_{}.csv".format(output_dir, wl_name, kind))
