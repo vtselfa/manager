@@ -33,14 +33,14 @@ void config_check_fields(const YAML::Node &node, const std::vector<string> &requ
 	// Check that required fields exist
 	for (string field : required)
 		if (!node[field])
-			throw_with_trace(std::runtime_error("The node {} requires the field {}"_format(node.Scalar(), field)));
+			throw_with_trace(std::runtime_error("The node '{}' requires the field '{}'"_format(node.Scalar(), field)));
 
 	// Check that all the fields present are allowed
 	for (const auto &n : node)
 	{
 		string field = n.first.Scalar();
 		if (std::find(allowed.begin(), allowed.end(), field) == allowed.end())
-			LOGWAR("Field {} is not allowed in the {} node"_format(field, node.Scalar()));
+			LOGWAR("Field '{}' is not allowed in the '{}' node"_format(field, node.Scalar()));
 	}
 }
 
@@ -57,53 +57,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	if (kind == "none")
 		return std::make_shared<cat::policy::Base>();
 
-	if (kind == "sf" )
-	{
-		LOGINF("Using Slowfirst (sf) CAT policy");
-
-		// Check that required fields exist
-		for (string field : {"every", "cos"})
-			if (!policy[field])
-				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
-
-		// Read fields
-		uint64_t every = policy["every"].as<uint64_t>();
-		auto masks = vector<uint64_t>();
-		for (const auto &node : policy["cos"])
-			masks.push_back(node.as<uint64_t>());
-		if (masks.size() <= 2)
-			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
-
-		return std::make_shared<cat::policy::Slowfirst>(every, masks);
-	}
-
-	else if (kind == "sfc" || kind == "sfca")
-	{
-		// Check that required fields exist
-		for (string field : {"every", "cos", "num_clusters"})
-			if (!policy[field])
-				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
-
-		// Read fields
-		uint64_t every = policy["every"].as<uint64_t>();
-		auto masks = vector<uint64_t>();
-		uint32_t num_clusters = policy["num_clusters"].as<uint32_t>();
-		for (const auto &node : policy["cos"])
-			masks.push_back(node.as<uint64_t>());
-		if (masks.size() <= 2)
-			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
-
-		if (kind == "sfc")
-		{
-			LOGINF("Using Slowfirst Clustered (sfc) CAT policy");
-			return std::make_shared<cat::policy::SlowfirstClustered>(every, masks, num_clusters);
-		}
-
-		LOGINF("Using Slowfirst Clustered and Adjusted (sfca) CAT policy");
-		return std::make_shared<cat::policy::SlowfirstClusteredAdjusted>(every, masks, num_clusters);
-	}
-
-	else if (kind == "sfcoa")
+	if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
 		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters", "cluster_sizes", "min_max"};
@@ -115,20 +69,8 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 				{"min_max", "cluster_sizes"},
 				{"min_max", "eval_clusters"},
 		};
-		allowed.insert(allowed.end(), required.begin(), required.end());
 
-		// Check that required fields exist
-		for (string field : required)
-			if (!policy[field])
-				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
-
-		// Check that all the fields present are allowed
-		for (const auto &node : policy)
-		{
-			string field = node.first.Scalar();
-			if (std::find(allowed.begin(), allowed.end(), field) == allowed.end())
-				LOGWAR("Field {} is not allowed in the {} policy"_format(field, kind));
-		}
+		config_check_fields(policy, required, allowed);
 
 		// Check that there are not incompatible fields
 		for (const auto &pair : incompatible)
@@ -152,24 +94,93 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		return std::make_shared<cat::policy::SfCOA>(every, num_clusters, model, alternate_sides, min_stall_ratio, detect_outliers, eval_clusters, cluster_sizes, min_max);
 	}
 
-	else if (kind == "sfl" )
+	// Cluster and distribute
+	else if (kind == "cad")
 	{
-		LOGINF("Using SFL CAT policy");
+		vector<string> required = {"kind", "clustering", "distribution"};
+		vector<string> allowed  = {"every"};
 
-		// Check that required fields exist
-		for (string field : {"every", "cos"})
-			if (!policy[field])
-				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
+		config_check_fields(policy, required, allowed);
 
 		// Read fields
-		uint64_t every = policy["every"].as<uint64_t>();
-		auto masks = vector<uint64_t>();
-		for (const auto &node : policy["cos"])
-			masks.push_back(node.as<uint64_t>());
-		if (masks.size() <= 2)
-			throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs at least two COS"));
+		uint64_t every = policy["every"] ? policy["every"].as<uint64_t>() : 1;
 
-		return std::make_shared<cat::policy::SFL>(every, masks);
+		// Clustering
+		assert(policy["clustering"] && policy["clustering"].IsMap());
+		string clustering = policy["clustering"]["kind"].as<string>();
+		cat::policy::ClusteringBase_ptr_t clustering_ptr;
+
+		if (clustering == "kmeans")
+		{
+			config_check_fields(policy["clustering"], {"kind", "num_clusters", "event"}, {"max_clusters", "eval_clusters", "sort_clusters"});
+			int num_clusters = policy["clustering"]["num_clusters"].as<int>();
+			int max_clusters = policy["clustering"]["max_clusters"] ?
+					policy["clustering"]["max_clusters"].as<int>() :
+					cat_read_info()["L3"].num_closids;
+			EvalClusters eval_clusters = str_to_evalclusters(policy["eval_clusters"] ?
+					policy["eval_clusters"].as<string>() :
+					"dunn");
+			auto event = policy["clustering"]["event"].as<string>();
+			auto sort = policy["clustering"]["sort_clusters"].as<string>();
+			bool sort_ascending = false;
+			if (sort == "ascending")
+				sort_ascending = true;
+			else if (sort != "descending")
+				throw_with_trace(std::runtime_error("The value of 'sort_clusters' can only be 'ascending' or 'decending'"));
+
+			clustering_ptr = std::make_shared<cat::policy::Cluster_KMeans>(num_clusters, max_clusters, eval_clusters, event, sort_ascending);
+		}
+		else if (clustering == "sf")
+		{
+			config_check_fields(policy["clustering"], {"kind", "cluster_sizes"}, {});
+			if (!policy["clustering"]["cluster_sizes"].IsSequence())
+				throw_with_trace(std::runtime_error("The field 'cluster_sizes' must be a sequance of integers"));
+
+			auto cluster_sizes = policy["clustering"]["cluster_sizes"].as<vector<int>>();
+			clustering_ptr = std::make_shared<cat::policy::Cluster_SF>(cluster_sizes);
+		}
+		else
+		{
+			throw_with_trace(std::runtime_error("Unknown clustering policy {}"_format(clustering)));
+		}
+
+		// Distribution
+		assert(policy["distribution"] && policy["distribution"].IsMap());
+		string distribution = policy["distribution"]["kind"].as<string>();
+		cat::policy::DistributingBase_ptr_t distribution_ptr;
+
+		if (distribution == "n")
+		{
+			config_check_fields(policy["distribution"], {"kind", "n"}, {});
+			int n = policy["distribution"]["n"].as<int>();
+			distribution_ptr = std::make_shared<cat::policy::Distribute_N>(n);
+		}
+		else if (distribution == "relfunc")
+		{
+			config_check_fields(policy["distribution"], {"kind"}, {"invert_metric", "min_ways", "max_ways"});
+			auto invert_metric = policy["distribution"]["invert_metric"] ?
+					policy["distribution"]["invert_metric"].as<bool>() :
+					false;
+			auto min_ways = policy["distribution"]["min_ways"] ?
+					policy["distribution"]["min_ways"].as<int>() :
+					2;
+			auto max_ways = policy["distribution"]["max_ways"] ?
+					policy["distribution"]["max_ways"].as<int>() :
+					20;
+			distribution_ptr = std::make_shared<cat::policy::Distribute_RelFunc>(min_ways, max_ways, invert_metric);
+		}
+		else if (distribution == "static")
+		{
+			auto masks = policy["distribution"]["masks"].as<vector<uint32_t>>();
+			distribution_ptr = std::make_shared<cat::policy::Distribute_Static>(masks);
+		}
+		else
+		{
+			throw_with_trace(std::runtime_error("Unknown distribution policy {}"_format(distribution)));
+		}
+
+		LOGINF("Using {} CAT policy"_format(kind));
+		return std::make_shared<cat::policy::ClusterAndDistribute>(every, clustering_ptr, distribution_ptr);
 	}
 
 	else

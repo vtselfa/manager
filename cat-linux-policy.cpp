@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <iterator>
@@ -26,79 +27,17 @@ namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
-void SFL::set_masks(const std::vector<uint64_t> &masks)
+// Assign each task to a cluster
+clusters_t ClusteringBase::apply(const std::vector<Task> &tasklist)
 {
-	this->masks = masks;
-	for (uint32_t i = 0; i < masks.size(); i++)
-		get_cat()->set_cbm(i, masks[i]);
-}
-
-
-void SFL::check_masks(const std::vector<uint64_t> &masks) const
-{
-	uint64_t last_mask = 0;
-	std::string m;
-	for (auto mask : masks)
+	auto clusters = clusters_t();
+	for (const auto &task : tasklist)
 	{
-		if (last_mask > mask)
-		{
-			LOGWAR("The masks for the slowfirst CAT policy may be in the wrong order");
-			break;
-		}
-		last_mask = mask;
-		m += std::to_string(mask) + " ";
+		clusters.push_back(Cluster(task.id, {0}));
+		clusters[task.id].addPoint(
+				std::make_shared<Point>(task.id, std::vector<double>{0}));
 	}
-	LOGDEB("Slowfirst masks: " << m);
-}
-
-
-void SFL::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
-{
-	// Apply only when the amount of intervals specified has passed
-	if (current_interval % every != 0)
-		return;
-
-	LOGDEB("function: {}, interval: {}"_format(__PRETTY_FUNCTION__, current_interval));
-
-	// (Core, Combined stalls) tuple
-	typedef std::tuple<pid_t, uint64_t> pair_t;
-	auto v = std::vector<pair_t>();
-
-	check_masks(masks);
-	set_masks(masks);
-
-	for (uint32_t t = 0; t < tasklist.size(); t++)
-	{
-		uint64_t l2_miss_stalls;
-		const Task &task = tasklist[t];
-		try
-		{
-			l2_miss_stalls = acc::sum(task.stats.events.at("CYCLE_ACTIVITY.STALLS_TOTAL"));
-		}
-		catch (const std::exception &e)
-		{
-			std::string msg = "This policy requires the event CYCLE_ACTIVITY.STALLS_TOTAL. The events monitorized are:";
-			for (const auto &kv : task.stats.events)
-				msg += "\n" + kv.first;
-			throw_with_trace(std::runtime_error(msg));
-		}
-		v.push_back(std::make_pair(task.pid, l2_miss_stalls));
-	}
-
-	// Sort in descending order by stalls
-	std::sort(begin(v), end(v),
-			[](const pair_t &t1, const pair_t &t2)
-			{
-				return std::get<1>(t1) > std::get<1>(t2);
-			});
-
-	// Assign the slowest pids to masks which will hopefully help them
-	for (uint32_t pos = 0; pos < masks.size() - 1 && pos < tasklist.size(); pos++)
-	{
-		uint32_t cos  = masks.size() - pos - 1;
-		pid_t pid = std::get<0>(v[pos]);
-		get_cat()->add_task(cos, pid);
-	}
+	return clusters;
 }
 
 
@@ -145,8 +84,7 @@ clusters_t Cluster_SF::apply(const std::vector<Task> &tasklist)
 		{
 			auto task_id = v[t].first;
 			auto task_stalls = v[t].second;
-			// auto ptr = std::make_shared<Point>(11, std::vector<double>());
-			clusters[s].addPoint(std::make_shared<Point>(task_id, std::vector<double>((double) task_stalls)));
+			clusters[s].addPoint(std::make_shared<Point>(task_id, std::vector<double>{(double) task_stalls}));
 			size--;
 			t++;
 		}
@@ -164,49 +102,70 @@ clusters_t Cluster_SF::apply(const std::vector<Task> &tasklist)
 clusters_t Cluster_KMeans::apply(const std::vector<Task> &tasklist)
 {
 	auto data = std::vector<point_ptr_t>();
-	acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance, acc::tag::max>> accum;
 
 	// Put data in the format KMeans expects
 	for (const auto &task : tasklist)
 	{
-		uint64_t stalls;
+		double metric;
 		try
 		{
-			stalls = acc::sum(task.stats.events.at("cycle_activity.stalls_ldm_pending"));
+			metric = acc::rolling_mean(task.stats.events.at(event));
 		}
 		catch (const std::exception &e)
 		{
-			std::string msg = "This policy requires the event 'cycle_activity.stalls_ldm_pending'. The events monitorized are:";
+			std::string msg = "This policy requires the event '{}'. The events monitorized are:"_format(event);
 			for (const auto &kv : task.stats.events)
 				msg += "\n" + kv.first;
 			throw_with_trace(std::runtime_error(msg));
 		}
-		accum(stalls);
 
-		data.push_back(std::make_shared<Point>(task.id, std::vector<double>((double) stalls)));
+		data.push_back(std::make_shared<Point>(task.id, std::vector<double>{metric}));
 	}
 
-	std::vector<Cluster> kmeans_clusters;
+	std::vector<Cluster> clusters;
 	if (num_clusters > 0)
 	{
 		LOGDEB("Enforce {} clusters..."_format(num_clusters));
-		KMeans::clusterize(num_clusters, data, kmeans_clusters, 100);
+		KMeans::clusterize(num_clusters, data, clusters, 100);
 	}
 	else
 	{
 		assert(num_clusters == 0);
 
 		LOGDEB("Try to find the optimal number of clusters...");
-		KMeans::clusterize_optimally(max_clusters, data, kmeans_clusters, 100, eval_clusters);
+		KMeans::clusterize_optimally(max_clusters, data, clusters, 100, eval_clusters);
 	}
 
-	LOGDEB(fmt::format("Clusterize: {} points in {} clusters", data.size(), kmeans_clusters.size()));
+	LOGDEB(fmt::format("Clusterize: {} points in {} clusters using the event '{}'", data.size(), clusters.size(), event));
 
-	return kmeans_clusters;
+	// Sort clusters in ASCENDING order
+	if (sort_ascending)
+	{
+		std::sort(begin(clusters), end(clusters),
+				[this](const Cluster &c1, const Cluster &c2)
+				{
+					return c1.getCentroid()[0] < c2.getCentroid()[0];
+				});
+	}
+
+	// Sort clusters in DESCENDING order
+	else
+	{
+		std::sort(begin(clusters), end(clusters),
+				[this](const Cluster &c1, const Cluster &c2)
+				{
+					return c1.getCentroid()[0] > c2.getCentroid()[0];
+				});
+	}
+	LOGDEB("Sorted clusters in {} order:"_format(sort_ascending ? "ascending" : "descending"));
+	for (const auto &cluster : clusters)
+		LOGDEB(cluster.to_string());
+
+	return clusters;
 }
 
 
-ways_t Distribute_N::apply(const std::vector<Task> &, clusters_t &clusters)
+ways_t Distribute_N::apply(const std::vector<Task> &, const clusters_t &clusters)
 {
 	ways_t ways(clusters.size(), -1);
 	for (size_t i = 0; i < clusters.size(); i++)
@@ -220,30 +179,55 @@ ways_t Distribute_N::apply(const std::vector<Task> &, clusters_t &clusters)
 }
 
 
-ways_t Distribute_RelFunc::apply(const std::vector<Task> &, clusters_t &clusters)
+ways_t Distribute_RelFunc::apply(const std::vector<Task> &, const clusters_t &clusters)
 {
-	// Sort clusters in DESCENDING order
-	std::sort(begin(clusters), end(clusters),
-			[](const Cluster &c1, const Cluster &c2)
-			{
-				return c1.getCentroid()[0] > c2.getCentroid()[0];
-			});
-
-	ways_t cbms(clusters.size(), -1);
+	ways_t cbms;
+	auto values = std::vector<double>();
+	if (invert_metric)
+		LOGDEB("Inverting metric...");
 	for (size_t i = 0; i < clusters.size(); i++)
 	{
-		double x = clusters[i].getCentroid()[0] / clusters.front().getCentroid()[0];
+		if (invert_metric)
+			values.push_back(1 / clusters[i].getCentroid()[0]);
+		else
+			values.push_back(clusters[i].getCentroid()[0]);
+	}
+	double max = *std::max_element(values.begin(), values.end());
+
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		double x = values[i] / max;
 		double y;
 		assert(x >= 0 && x <= 1);
-		const double a = std::log(max_num_ways - min_num_ways + 1);
+		const double a = std::log(max_ways - min_ways + 1);
 		x *= a; // Scale X for the interval [0, a]
-		y = std::exp(x) + min_num_ways - 1;
+		y = std::exp(x) + min_ways - 1;
 		int ways = std::round(y);
-		cbms[i] = cut_mask(~(-1 << ways));
+		cbms.push_back(cut_mask(~(-1 << ways)));
 
 		LOGDEB("Cluster {} : x = {} y = {} -> {} ways"_format(i, x, y, ways));
 	}
 	return cbms;
+}
+
+
+void ClusterAndDistribute::show(const std::vector<Task> &tasklist, const clusters_t &clusters, const ways_t &ways)
+{
+	assert(clusters.size() == ways.size());
+	for (size_t i = 0; i < ways.size(); i++)
+	{
+		std::string task_ids;
+		const auto &points = clusters[i].getPoints();
+		size_t p = 0;
+		for (const auto &point : points)
+		{
+			const Task &task = tasklist[point->id];
+			task_ids += "{}:{}"_format(task.id, task.name);
+			task_ids += (p == points.size() - 1) ? "" : ", ";
+			p++;
+		}
+		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", i, ways[i], __builtin_popcount(ways[i]), task_ids));
+	}
 }
 
 }} // cat::policy
