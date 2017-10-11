@@ -123,6 +123,8 @@ enum class EvalClusters
 	dunn,
 	silhouette
 };
+EvalClusters str_to_evalclusters(std::string str);
+
 
 
 class KMeans

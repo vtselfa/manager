@@ -19,6 +19,30 @@ static std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Nod
 static vector<Cos> config_read_cos(const YAML::Node &config);
 static vector<Task> config_read_tasks(const YAML::Node &config);
 static YAML::Node merge(YAML::Node user, YAML::Node def);
+static void config_check_fields(const YAML::Node &node, const std::vector<string> &required, std::vector<string> allowed);
+
+
+static
+void config_check_fields(const YAML::Node &node, const std::vector<string> &required, std::vector<string> allowed)
+{
+	// Allowed is passed by value...
+	allowed.insert(allowed.end(), required.begin(), required.end());
+
+	assert(node.IsMap());
+
+	// Check that required fields exist
+	for (string field : required)
+		if (!node[field])
+			throw_with_trace(std::runtime_error("The node {} requires the field {}"_format(node.Scalar(), field)));
+
+	// Check that all the fields present are allowed
+	for (const auto &n : node)
+	{
+		string field = n.first.Scalar();
+		if (std::find(allowed.begin(), allowed.end(), field) == allowed.end())
+			LOGWAR("Field {} is not allowed in the {} node"_format(field, node.Scalar()));
+	}
+}
 
 
 static
@@ -198,7 +222,7 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		if (!tasks[i]["app"])
-			throw_with_trace(std::runtime_error("Each task must have an app dictionary with at leask the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'"));
+			throw_with_trace(std::runtime_error("Each task must have an app dictionary with at least the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'"));
 
 		const auto &app = tasks[i]["app"];
 
@@ -283,7 +307,7 @@ YAML::Node merge(YAML::Node user, YAML::Node def)
 				user[key] = merge(user[key], value);
 		}
 	}
-    return user;
+	return user;
 }
 
 

@@ -2,10 +2,16 @@
 #include <boost/filesystem.hpp>
 #include <glib.h>
 
+#include <fmt/format.h>
 #include <grp.h>
 
 #include "common.hpp"
 #include "throw-with-trace.hpp"
+
+
+namespace fs = boost::filesystem;
+
+using fmt::literals::operator""_format;
 
 
 // Opens an output stream and checks for errors
@@ -38,7 +44,16 @@ std::ifstream open_ifstream(const boost::filesystem::path &path)
 std::ofstream open_ofstream(const boost::filesystem::path &path)
 {
 	return open_ofstream(path.string());
-};
+}
+
+
+void assert_dir_exists(const boost::filesystem::path &dir)
+{
+	if (!fs::exists(dir))
+		throw_with_trace(std::runtime_error("Dir {} does not exist"_format(dir.string())));
+	if (!fs::is_directory(dir))
+		throw_with_trace(std::runtime_error("{} is not a directory"_format(dir.string())));
+}
 
 
 // Returns the executable basename from a commandline

@@ -11,6 +11,16 @@
 using fmt::literals::operator""_format;
 
 
+EvalClusters str_to_evalclusters(std::string str)
+{
+	if (str == "dunn")
+		return EvalClusters::dunn;
+	if (str == "silhouette")
+		return EvalClusters::silhouette;
+	throw_with_trace(std::runtime_error("Invalid EvalClusters"));
+}
+
+
 double Point::distance(const Point &o) const
 {
 	double sum = 0;

@@ -52,6 +52,7 @@ std::map<std::string, CATInfo> cat_read_info()
 
 void CATLinux::set_schemata(fs::path clos_dir, uint64_t mask)
 {
+	assert_dir_exists(clos_dir);
 	const std::string schemata = "{}:0={:x}"_format(info.cache, mask);
 
 	try
@@ -70,6 +71,7 @@ uint64_t CATLinux::get_schemata(fs::path clos_dir) const
 {
 	uint64_t schemata;
 
+	assert_dir_exists(clos_dir);
 	try
 	{
 		std::ifstream f = open_ifstream(clos_dir / "schemata");
@@ -97,6 +99,7 @@ void CATLinux::create_clos(std::string clos)
 
 void CATLinux::set_cpus(fs::path clos_dir, uint64_t cpu_mask)
 {
+	assert_dir_exists(clos_dir);
 	std::ofstream f = open_ofstream(clos_dir / "cpus");
 	f << std::hex << cpu_mask << std::endl;
 }
@@ -105,6 +108,7 @@ void CATLinux::set_cpus(fs::path clos_dir, uint64_t cpu_mask)
 uint64_t CATLinux::get_cpus(fs::path clos_dir) const
 {
 	uint64_t cpu_mask;
+	assert_dir_exists(clos_dir);
 	std::ifstream f = open_ifstream(clos_dir / "cpus");
 	f >> std::hex >> cpu_mask;
 	return cpu_mask;
@@ -138,6 +142,7 @@ std::vector<fs::path> CATLinux::get_clos_dirs() const
 /* Get the tasks assigned to a COS. */
 std::vector<std::string> CATLinux::get_tasks(fs::path clos_dir) const
 {
+	assert_dir_exists(clos_dir);
 	std::ifstream f = open_ifstream(clos_dir / "tasks");
 	vector<string> tasks;
 	string task;
@@ -149,6 +154,7 @@ std::vector<std::string> CATLinux::get_tasks(fs::path clos_dir) const
 
 void CATLinux::add_task(fs::path clos_dir, pid_t pid)
 {
+	assert_dir_exists(clos_dir);
 	try
 	{
 		std::ofstream f = open_ofstream(clos_dir / "tasks");
