@@ -60,7 +60,7 @@ int perf_init()
 {
 	perf_event_desc_t *fds = NULL;
 
-	int status, ret, i, num_fds = 0, grp, group_fd;
+	int status = 0, ret, i, num_fds = 0, grp, group_fd;
 	int ready[2], go[2];
 	char buf;
 	pid_t pid;

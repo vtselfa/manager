@@ -67,13 +67,15 @@ void task_remove_rundir(const Task &task)
 void task_pause(const Task &task)
 {
 	pid_t pid = task.pid;
-	int status;
+	int status = 0;
 
 	if (pid <= 1)
 		throw_with_trace(std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs"));
 
 	kill(pid, SIGSTOP); // Stop child process
-	waitpid(pid, &status, WUNTRACED); // Wait until it stops
+	if (waitpid(pid, &status, WUNTRACED) != pid) // Wait until it stops
+		throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+
 	if (WIFEXITED(status))
 		throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 }
@@ -88,12 +90,14 @@ void tasks_pause(std::vector<Task> &tasklist)
 	for (auto &task : tasklist)
 	{
 		pid_t pid = task.pid;
-		int status;
+		int status = 0;
 
 		if (pid <= 1)
 			throw_with_trace(std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs"));
 
-		waitpid(pid, &status, WUNTRACED); // Ensure it stopt
+		if (waitpid(pid, &status, WUNTRACED) != pid) // Wait until it stops
+			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+
 		if (WIFEXITED(status))
 		{
 			if (status == 0)
@@ -121,7 +125,9 @@ void task_resume(const Task &task)
 
 	kill(pid, SIGCONT); // Resume process
 
-	waitpid(pid, &status, WCONTINUED); // Ensure it resumed
+	if (waitpid(pid, &status, WCONTINUED) != pid) // Ensure it resumed
+		throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+
 	if (WIFEXITED(status))
 		throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 }
@@ -145,7 +151,9 @@ void tasks_resume(const std::vector<Task> &tasklist)
 		if (pid <= 1)
 			throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
 
-		waitpid(pid, &status, WCONTINUED); // Ensure it resumed
+		if (waitpid(pid, &status, WCONTINUED) != pid) // Ensure it resumed
+			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+
 		if (WIFEXITED(status))
 			throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
 	}
