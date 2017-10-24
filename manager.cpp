@@ -46,9 +46,9 @@ typedef std::chrono::system_clock::time_point time_point_t;
 
 
 CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist);
-void loop(vector<Task> &tasklist, std::shared_ptr<cat::policy::Base> catpol, Perf &perf, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
-void clean(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf);
-[[noreturn]] void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf);
+void loop(tasklist_t &tasklist, std::shared_ptr<cat::policy::Base> catpol, Perf &perf, const vector<string> &events, uint64_t time_int_us, uint32_t max_int, std::ostream &out, std::ostream &ucompl_out, std::ostream &total_out);
+void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf);
+[[noreturn]] void clean_and_die(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf);
 std::string program_options_to_string(const std::vector<po::option>& raw);
 void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, const uint64_t interval, const uint64_t time_int_us, int64_t &adj_delay_us);
 
@@ -81,7 +81,7 @@ CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
 
 
 void loop(
-		vector<Task> &tasklist,
+		tasklist_t &tasklist,
 		std::shared_ptr<cat::policy::Base> catpol,
 		Perf &perf,
 		const vector<string> &events,
@@ -216,7 +216,7 @@ void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, 
 
 
 // Leave the machine in a consistent state
-void clean(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf)
+void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 {
 	cat->reset();
 	perf.clean();
@@ -242,7 +242,7 @@ void clean(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf)
 }
 
 
-void clean_and_die(vector<Task> &tasklist, CAT_ptr_t cat, Perf &perf)
+void clean_and_die(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 {
 	LOGERR("--- PANIC, TRYING TO CLEAN ---");
 
@@ -420,7 +420,7 @@ int main(int argc, char *argv[])
 	open_output_streams(vm["output"].as<string>(), vm["fin-output"].as<string>(), vm["total-output"].as<string>(), int_out, ucompl_out, total_out);
 
 	// Read config
-	auto tasklist = vector<Task>();
+	auto tasklist = tasklist_t();
 	auto coslist = vector<Cos>();
 	CAT_ptr_t cat;
 	auto perf = Perf();

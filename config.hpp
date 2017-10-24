@@ -17,4 +17,4 @@ struct Cos
 };
 
 
-void config_read(const std::string &path, const std::string &overlay, std::vector<Task> &tasklist, std::vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol);
+void config_read(const std::string &path, const std::string &overlay, tasklist_t &tasklist, std::vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol);

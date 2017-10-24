@@ -33,7 +33,7 @@ using fmt::literals::operator""_format;
 std::atomic<uint32_t> Task::ID(0);
 
 
-void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base)
+void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base)
 {
 	for (size_t i = 0; i < tasklist.size(); i++)
 	{
@@ -82,7 +82,7 @@ void task_pause(const Task &task)
 
 
 // Pause multiple tasks
-void tasks_pause(std::vector<Task> &tasklist)
+void tasks_pause(tasklist_t &tasklist)
 {
 	for (const auto &task : tasklist)
 		kill(task.pid, SIGSTOP); // Stop process
@@ -134,7 +134,7 @@ void task_resume(const Task &task)
 
 
 // Resume multiple tasks
-void tasks_resume(const std::vector<Task> &tasklist)
+void tasks_resume(const tasklist_t &tasklist)
 {
 	for (const auto &task : tasklist)
 		kill(task.pid, SIGCONT); // Resume process
@@ -303,7 +303,7 @@ void task_restart(Task &task)
 }
 
 
-std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist)
+std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 {
 	auto res = std::vector<uint32_t>();
 	for (const auto &task : tasklist)
@@ -318,7 +318,7 @@ std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist)
 
 
 // Kill and restart the tasks that have reached their exec limit
-void tasks_kill_and_restart(std::vector<Task> &tasklist, Perf &perf, const std::vector<std::string> &events)
+void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events)
 {
 	for (auto &task : tasklist)
 	{
@@ -393,7 +393,7 @@ void task_stats_print_headers(const Task &t, std::ostream &out, const std::strin
 }
 
 
-void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat)
+void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLinux> &cat)
 {
 	// Mapping a task to a CLOS requires Linux CAT, it is not supported by Intel CAT.
 	// Therefore, if the feature is used, we have to check that the pointer is valid.

@@ -17,7 +17,7 @@ class ClusteringBase
 	ClusteringBase() = default;
 	virtual ~ClusteringBase() = default;
 
-	virtual clusters_t apply(const std::vector<Task> &tasklist);
+	virtual clusters_t apply(const tasklist_t &tasklist);
 };
 typedef std::shared_ptr<ClusteringBase> ClusteringBase_ptr_t;
 
@@ -32,7 +32,7 @@ class Cluster_SF: public ClusteringBase
 	Cluster_SF(const std::vector<int> &sizes) : sizes(sizes) {}
 	virtual ~Cluster_SF() = default;
 
-	virtual clusters_t apply(const std::vector<Task> &tasklist) override;
+	virtual clusters_t apply(const tasklist_t &tasklist) override;
 };
 
 
@@ -52,7 +52,7 @@ class Cluster_KMeans: public ClusteringBase
 			sort_ascending(sort_ascending) {}
 	virtual ~Cluster_KMeans() = default;
 
-	virtual clusters_t apply(const std::vector<Task> &tasklist) override;
+	virtual clusters_t apply(const tasklist_t &tasklist) override;
 };
 
 
@@ -80,7 +80,7 @@ class DistributingBase
 
 	virtual ~DistributingBase() = default;
 
-	virtual ways_t apply(const std::vector<Task> &, const clusters_t &) { return ways_t(); };
+	virtual ways_t apply(const tasklist_t &, const clusters_t &) { return ways_t(); };
 };
 typedef std::shared_ptr<DistributingBase> DistributingBase_ptr_t;
 
@@ -95,7 +95,7 @@ class Distribute_N: public DistributingBase
 	Distribute_N(int min_ways, int max_ways, int n): DistributingBase(min_ways, max_ways), n(n) {}
 	virtual ~Distribute_N() = default;
 
-	virtual ways_t apply(const std::vector<Task> &, const clusters_t &clusters) override;
+	virtual ways_t apply(const tasklist_t &, const clusters_t &clusters) override;
 };
 
 
@@ -108,7 +108,7 @@ class Distribute_Static: public DistributingBase
 	Distribute_Static(const ways_t &masks) : masks(masks){}
 	virtual ~Distribute_Static() = default;
 
-	virtual ways_t apply(const std::vector<Task> &, const clusters_t &) override { return masks; }
+	virtual ways_t apply(const tasklist_t &, const clusters_t &) override { return masks; }
 };
 
 
@@ -124,7 +124,7 @@ class Distribute_RelFunc: public DistributingBase
 			DistributingBase(min_ways, max_ways), invert_metric(invert_metric) {};
 	virtual ~Distribute_RelFunc() = default;
 
-	virtual ways_t apply(const std::vector<Task> &, const clusters_t &clusters) override;
+	virtual ways_t apply(const tasklist_t &, const clusters_t &clusters) override;
 };
 
 
@@ -175,7 +175,7 @@ class ClusterAndDistribute: public Base
 	}
 
 
-	virtual void apply(uint64_t current_interval, const std::vector<Task> &tasklist)
+	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist)
 	{
 		// Apply the policy only when the amount of intervals specified has passed
 		if (current_interval % every != 0)
@@ -187,7 +187,7 @@ class ClusterAndDistribute: public Base
 		ways_to_closes(ways);
 	}
 
-	void show(const std::vector<Task> &tasklist, const clusters_t &clusters, const ways_t &ways);
+	void show(const tasklist_t &tasklist, const clusters_t &clusters, const ways_t &ways);
 };
 
 }} // cat::policy

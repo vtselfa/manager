@@ -71,12 +71,12 @@ class Task
 typedef std::vector<Task> tasklist_t;
 
 
-void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base);
-void tasks_pause(std::vector<Task> &tasklist);
-void tasks_resume(const std::vector<Task> &tasklist);
-void tasks_kill_and_restart(std::vector<Task> &tasklist, Perf &perf, const std::vector<std::string> &events);
-void tasks_map_to_initial_clos(std::vector<Task> &tasklist, const std::shared_ptr<CATLinux> &cat);
-std::vector<uint32_t> tasks_cores_used(const std::vector<Task> &tasklist);
+void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base);
+void tasks_pause(tasklist_t &tasklist);
+void tasks_resume(const tasklist_t &tasklist);
+void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events);
+void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLinux> &cat);
+std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist);
 
 void task_create_rundir(const Task &task);
 void task_remove_rundir(const Task &task);

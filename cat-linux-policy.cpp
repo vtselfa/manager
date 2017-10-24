@@ -28,7 +28,7 @@ using fmt::literals::operator""_format;
 
 
 // Assign each task to a cluster
-clusters_t ClusteringBase::apply(const std::vector<Task> &tasklist)
+clusters_t ClusteringBase::apply(const tasklist_t &tasklist)
 {
 	auto clusters = clusters_t();
 	for (const auto &task : tasklist)
@@ -41,7 +41,7 @@ clusters_t ClusteringBase::apply(const std::vector<Task> &tasklist)
 }
 
 
-clusters_t Cluster_SF::apply(const std::vector<Task> &tasklist)
+clusters_t Cluster_SF::apply(const tasklist_t &tasklist)
 {
 	// (Pos, Stalls) tuple
 	typedef std::pair<pid_t, uint64_t> pair_t;
@@ -99,7 +99,7 @@ clusters_t Cluster_SF::apply(const std::vector<Task> &tasklist)
 }
 
 
-clusters_t Cluster_KMeans::apply(const std::vector<Task> &tasklist)
+clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 {
 	auto data = std::vector<point_ptr_t>();
 
@@ -165,7 +165,7 @@ clusters_t Cluster_KMeans::apply(const std::vector<Task> &tasklist)
 }
 
 
-ways_t Distribute_N::apply(const std::vector<Task> &, const clusters_t &clusters)
+ways_t Distribute_N::apply(const tasklist_t &, const clusters_t &clusters)
 {
 	ways_t ways(clusters.size(), -1);
 	for (size_t i = 0; i < clusters.size(); i++)
@@ -179,7 +179,7 @@ ways_t Distribute_N::apply(const std::vector<Task> &, const clusters_t &clusters
 }
 
 
-ways_t Distribute_RelFunc::apply(const std::vector<Task> &, const clusters_t &clusters)
+ways_t Distribute_RelFunc::apply(const tasklist_t &, const clusters_t &clusters)
 {
 	ways_t cbms;
 	auto values = std::vector<double>();
@@ -211,7 +211,7 @@ ways_t Distribute_RelFunc::apply(const std::vector<Task> &, const clusters_t &cl
 }
 
 
-void ClusterAndDistribute::show(const std::vector<Task> &tasklist, const clusters_t &clusters, const ways_t &ways)
+void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &clusters, const ways_t &ways)
 {
 	assert(clusters.size() == ways.size());
 	for (size_t i = 0; i < ways.size(); i++)

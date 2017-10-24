@@ -131,7 +131,7 @@ SfCOA::Model::Model(const std::string &name) : name(name)
 }
 
 
-void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const std::vector<Task> &tasklist)
+void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const tasklist_t &tasklist)
 {
 	// Apply the policy only when the amount of intervals specified has passed
 	if (current_interval % every != 0)

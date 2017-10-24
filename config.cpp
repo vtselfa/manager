@@ -17,7 +17,7 @@ using fmt::literals::operator""_format;
 
 static std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &config);
 static vector<Cos> config_read_cos(const YAML::Node &config);
-static vector<Task> config_read_tasks(const YAML::Node &config);
+static tasklist_t config_read_tasks(const YAML::Node &config);
 static YAML::Node merge(YAML::Node user, YAML::Node def);
 static void config_check_fields(const YAML::Node &node, const std::vector<string> &required, std::vector<string> allowed);
 
@@ -226,10 +226,10 @@ vector<Cos> config_read_cos(const YAML::Node &config)
 
 
 static
-vector<Task> config_read_tasks(const YAML::Node &config)
+tasklist_t config_read_tasks(const YAML::Node &config)
 {
 	YAML::Node tasks = config["tasks"];
-	auto result = vector<Task>();
+	auto result = tasklist_t();
 	vector<string> required;
 	vector<string> allowed;
 	for (size_t i = 0; i < tasks.size(); i++)
@@ -333,7 +333,7 @@ YAML::Node merge(YAML::Node user, YAML::Node def)
 }
 
 
-void config_read(const string &path, const string &overlay, vector<Task> &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol)
+void config_read(const string &path, const string &overlay, tasklist_t &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol)
 {
 	// The message outputed by YAML is not clear enough, so we test first
 	std::ifstream f(path);
