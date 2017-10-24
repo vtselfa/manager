@@ -142,10 +142,12 @@ void loop(
 		// Process tasks...
 		for (auto &task : tasklist)
 		{
+			if (task.get_status() == Task::Status::done) continue;
+
 			// Test if the instruction limit has been reached
 			if (task.max_instr > 0 && task.stats.get_current("instructions") >=  task.max_instr)
 			{
-				task.limit_reached = true;
+				task.set_status(Task::Status::limit_reached);
 				task.completed++;
 			}
 
@@ -157,7 +159,8 @@ void loop(
 			// Print acumulated stats until this point
 			if (task.completed == 1)
 			{
-				if (task.limit_reached || task.finished)
+				auto s = task.get_status();
+				if (s == Task::Status::limit_reached || s == Task::Status::exited)
 					task_stats_print_total(task, interval, ucompl_out);
 			}
 			// Print interval stats

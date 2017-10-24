@@ -104,7 +104,7 @@ void tasks_pause(std::vector<Task> &tasklist)
 			{
 				LOGWAR("Task {}:{} with pid {} exited with status '{}'"_format(task.id, task.name, task.pid, status));
 				task.completed++;
-				task.finished = true;
+				task.set_status(Task::Status::exited);
 			}
 			else
 			{
@@ -142,7 +142,7 @@ void tasks_resume(const std::vector<Task> &tasklist)
 	for (const auto &task : tasklist)
 	{
 		// The task has finished, is not running
-		if (task.finished)
+		if (task.get_status() == Task::Status::exited)
 			continue;
 
 		pid_t pid = task.pid;
@@ -267,7 +267,7 @@ void task_kill(Task &task)
 	if (pid > 1) // Never send kill to PID 0 or 1...
 	{
 		// Already dead
-		if (task.finished)
+		if (task.get_status() == Task::Status::exited)
 		{
 			LOGINF("Task {}:{} with pid {} was already dead"_format(task.id, task.name, task.pid));
 		}
@@ -290,10 +290,16 @@ void task_kill(Task &task)
 // Kill and restart a task
 void task_restart(Task &task)
 {
-	LOGINF("Restarting task {}:{}"_format(task.id, task.name));
+	LOGINF("Restarting task {}:{} {}/{}"_format(
+			task.id, task.name, task.num_restarts + 1,
+			task.max_restarts == std::numeric_limits<decltype(task.max_restarts)>::max() ?
+				"inf" :
+				std::to_string(task.max_restarts)));
+	assert (task.get_status() == Task::Status::limit_reached || task.get_status() == Task::Status::exited);
 	task.reset();
 	task_remove_rundir(task);
 	task_execute(task);
+	task.num_restarts++;
 }
 
 
@@ -316,24 +322,34 @@ void tasks_kill_and_restart(std::vector<Task> &tasklist, Perf &perf, const std::
 {
 	for (auto &task : tasklist)
 	{
-		if (task.limit_reached || task.finished)
+		auto status = task.get_status();
+		if (status == Task::Status::limit_reached || status == Task::Status::exited)
 		{
 			perf.clean(task.pid);
-			if (task.limit_reached)
+			if (status == Task::Status::limit_reached)
 			{
-				LOGINF("Task {} ({}) limit reached, restarting"_format(task.id, task.name));
+				LOGINF("Task {} ({}) limit reached, killing"_format(task.id, task.name));
 				task_kill(task);
 			}
-			else if (task.finished)
+			else if (status == Task::Status::exited)
 			{
-				LOGINF("Task {} ({}) finished, restarting"_format(task.id, task.name));
+				LOGINF("Task {} ({}) finished"_format(task.id, task.name));
 			}
 			else
 			{
 				throw_with_trace(std::runtime_error("Should not have reached this..."));
 			}
-			task_restart(task);
-			perf.setup_events(task.pid, events);
+
+			// Restart task if the maximum number of restarts has not been reached
+			if (task.num_restarts < task.max_restarts)
+			{
+				task_restart(task);
+				perf.setup_events(task.pid, events);
+			}
+			else
+			{
+				task.set_status(Task::Status::done);
+			}
 		}
 	}
 }
@@ -428,4 +444,48 @@ bool task_exited(const Task &task)
 		return true;
 	}
 	return false;
+}
+
+
+const std::string Task::status_to_str(const Task::Status& s)
+{
+	switch(s)
+	{
+		case Status::runnable:
+			return "runnable";
+		case Status::limit_reached:
+			return "limit_reached";
+		case Status::exited:
+			return "exited";
+		case Status::done:
+			return "done";
+	}
+	throw_with_trace(std::runtime_error("Unknown status, should not reach this"));
+}
+
+
+const std::string Task::status_to_str() const
+{
+	return status_to_str(status);
+}
+
+
+const Task::Status& Task::get_status() const
+{
+	return status;
+};
+
+
+void Task::set_status(const Task::Status &new_status)
+{
+	LOGDEB("Task {}:{} changes its status from {} to {}"_format(id, name, status_to_str(), status_to_str(new_status)));
+	status = new_status;
+};
+
+
+// Reset flags
+void Task::reset()
+{
+	stats.reset_counters();
+	set_status(Status::runnable);
 }

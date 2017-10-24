@@ -230,12 +230,22 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 {
 	YAML::Node tasks = config["tasks"];
 	auto result = vector<Task>();
+	vector<string> required;
+	vector<string> allowed;
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
+		required = {"app"};
+		allowed  = {"max_instr", "max_restarts", "define", "initial_clos"};
+		config_check_fields(tasks[i], required, allowed);
+
 		if (!tasks[i]["app"])
 			throw_with_trace(std::runtime_error("Each task must have an app dictionary with at least the key 'cmd', and optionally the keys 'stdout', 'stdin', 'stderr', 'skel' and 'max_instr'"));
 
 		const auto &app = tasks[i]["app"];
+
+		required = {"cmd"};
+		allowed  = {"name", "skel", "stdin", "stdout", "stderr", "batch"};
+		config_check_fields(app, required, allowed);
 
 		// Commandline and name
 		if (!app["cmd"])
@@ -292,11 +302,12 @@ vector<Task> config_read_tasks(const YAML::Node &config)
 		}
 
 		// Maximum number of instructions to execute
-		uint64_t max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : 0;
+		auto max_instr = tasks[i]["max_instr"] ? tasks[i]["max_instr"].as<uint64_t>() : 0;
+		uint32_t max_restarts = tasks[i]["max_restarts"] ? tasks[i]["max_restarts"].as<decltype(max_restarts)>() : std::numeric_limits<decltype(max_restarts)>::max() ;
 
 		bool batch = tasks[i]["batch"] ? tasks[i]["batch"].as<bool>() : false;
 
-		result.push_back(Task(name, cmd, initial_clos, cpus, output, input, error, skel, max_instr, batch));
+		result.push_back(Task(name, cmd, initial_clos, cpus, output, input, error, skel, max_instr, max_restarts, batch));
 	}
 	return result;
 }

@@ -8,55 +8,67 @@
 #include "stats.hpp"
 
 
-struct Task
+class Task
 {
 	// Number of tasks created
 	static std::atomic<uint32_t> ID;
+
+	public:
+
+	enum class Status
+	{
+		runnable,
+		limit_reached,
+		exited,
+		done,
+	};
 
 	// Set on construction
 	const uint32_t id;
 	const std::string name;
 	const std::string cmd;
 	const uint32_t initial_clos;   // The CLOS this app starts mapped to
-	std::vector<uint32_t> cpus;    // Allowed cpus
 	const std::string out;         // Stdout redirection
 	const std::string in;          // Stdin redirection
 	const std::string err;         // Stderr redirection
 	const std::string skel;        // Directory containing files and folders to copy to rundir
-	const uint64_t max_instr = 0;  // Max number of instructions to execute
+	const uint64_t max_instr;      // Max number of instructions to execute
+	const uint32_t max_restarts;   // Maximum number of times this application is gonna be restarted after reaching the instruction limit or finishing
+	const bool batch;              // Batch tasks do not need to be completed in order to finish the execution
 
+	std::vector<uint32_t> cpus;    // Allowed cpus
 	std::string rundir = ""; // Set before executing the task
 	pid_t pid = 0;           // Set after executing the task
 
 	Stats stats = Stats();
 
-	bool limit_reached = false; // Has the instruction limit been reached?
-	bool finished = false;      // Has the application executed completely?
-
+	uint32_t num_restarts = 0;  // Number of times it has reached the instruction limit
 	uint32_t completed = 0;     // Number of times it has reached the instruction limit
-	bool batch = false;         // Batch tasks do not need to be completed in order to finish the execution
 
 	Task() = delete;
-	Task(const std::string &name, const std::string &cmd, uint32_t initial_clos, const std::vector<uint32_t> &cpus, const std::string &out, const std::string &in, const std::string &err, const std::string &skel, uint64_t max_instr, bool batch) :
-		id(ID++), name(name), cmd(cmd), initial_clos(initial_clos), cpus(cpus), out(out), in(in), err(err), skel(skel), max_instr(max_instr), batch(batch) {}
+	Task(const std::string &name, const std::string &cmd, uint32_t initial_clos,
+			const std::vector<uint32_t> &cpus, const std::string &out, const std::string &in,
+			const std::string &err, const std::string &skel, uint64_t max_instr,
+			uint32_t max_restarts, bool batch) :
+		id(ID++), name(name), cmd(cmd),
+		initial_clos(initial_clos),
+		out(out), in(in), err(err), skel(skel),
+		max_instr(max_instr), max_restarts(max_restarts),
+		batch(batch), cpus(cpus) {}
 
-	// Reset flags
-	void reset()
-	{
-		limit_reached = false;
-		finished = false;
-		stats.reset_counters();
-	}
+	static
+	const std::string status_to_str(const Status& s);
+
+	const std::string status_to_str() const;
+	const Status& get_status() const;
+	void set_status(const Status &new_status);
+	void reset();
+
+	private:
+
+	Status status = Status::runnable;
 };
 typedef std::vector<Task> tasklist_t;
-
-
-enum class StatsKind
-{
-	interval,
-	until_compl_summary,
-	total_summary
-};
 
 
 void tasks_set_rundirs(std::vector<Task> &tasklist, const std::string &rundir_base);
