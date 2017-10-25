@@ -31,8 +31,9 @@ using fmt::literals::operator""_format;
 clusters_t ClusteringBase::apply(const tasklist_t &tasklist)
 {
 	auto clusters = clusters_t();
-	for (const auto &task : tasklist)
+	for (const auto &task_ptr : tasklist)
 	{
+		const Task &task = *task_ptr;
 		clusters.push_back(Cluster(task.id, {0}));
 		clusters[task.id].addPoint(
 				std::make_shared<Point>(task.id, std::vector<double>{0}));
@@ -50,7 +51,7 @@ clusters_t Cluster_SF::apply(const tasklist_t &tasklist)
 	for (uint32_t t = 0; t < tasklist.size(); t++)
 	{
 		uint64_t stalls;
-		const Task &task = tasklist[t];
+		const Task &task = *tasklist[t];
 		try
 		{
 			stalls = acc::sum(task.stats.events.at("cycle_activity.stalls_ldm_pending"));
@@ -104,8 +105,9 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 	auto data = std::vector<point_ptr_t>();
 
 	// Put data in the format KMeans expects
-	for (const auto &task : tasklist)
+	for (const auto &task_ptr : tasklist)
 	{
+		const Task &task = *task_ptr;
 		double metric;
 		try
 		{
@@ -221,7 +223,7 @@ void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &cl
 		size_t p = 0;
 		for (const auto &point : points)
 		{
-			const Task &task = tasklist[point->id];
+			const Task &task = *tasklist[point->id];
 			task_ids += "{}:{}"_format(task.id, task.name);
 			task_ids += (p == points.size() - 1) ? "" : ", ";
 			p++;

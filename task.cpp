@@ -37,7 +37,7 @@ void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base)
 {
 	for (size_t i = 0; i < tasklist.size(); i++)
 	{
-		auto &task = tasklist[i];
+		auto &task = *tasklist[i];
 		task.rundir = rundir_base + "/" + std::to_string(i) + "-" + task.name;
 		if (fs::exists(task.rundir))
 			throw_with_trace(std::runtime_error("The rundir '" + task.rundir + "' already exists"));
@@ -85,30 +85,30 @@ void task_pause(const Task &task)
 void tasks_pause(tasklist_t &tasklist)
 {
 	for (const auto &task : tasklist)
-		kill(task.pid, SIGSTOP); // Stop process
+		kill(task->pid, SIGSTOP); // Stop process
 
-	for (auto &task : tasklist)
+	for (const auto &task : tasklist)
 	{
-		pid_t pid = task.pid;
+		pid_t pid = task->pid;
 		int status = 0;
 
 		if (pid <= 1)
 			throw_with_trace(std::runtime_error("Tried to send SIGSTOP to pid " + to_string(pid) + ", check for bugs"));
 
 		if (waitpid(pid, &status, WUNTRACED) != pid) // Wait until it stops
-			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task->name, task->pid)));
 
 		if (WIFEXITED(status))
 		{
 			if (status == 0)
 			{
-				LOGWAR("Task {}:{} with pid {} exited with status '{}'"_format(task.id, task.name, task.pid, status));
-				task.completed++;
-				task.set_status(Task::Status::exited);
+				LOGWAR("Task {}:{} with pid {} exited with status '{}'"_format(task->id, task->name, task->pid, status));
+				task->completed++;
+				task->set_status(Task::Status::exited);
 			}
 			else
 			{
-				throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
+				throw_with_trace(std::runtime_error("Task {}:{} with pid {} exited unexpectedly with status '{}'"_format(task->id, task->name, task->pid, WEXITSTATUS(status))));
 			}
 		}
 	}
@@ -137,25 +137,25 @@ void task_resume(const Task &task)
 void tasks_resume(const tasklist_t &tasklist)
 {
 	for (const auto &task : tasklist)
-		kill(task.pid, SIGCONT); // Resume process
+		kill(task->pid, SIGCONT); // Resume process
 
 	for (const auto &task : tasklist)
 	{
 		// The task has finished, is not running
-		if (task.get_status() == Task::Status::exited)
+		if (task->get_status() == Task::Status::exited)
 			continue;
 
-		pid_t pid = task.pid;
+		pid_t pid = task->pid;
 		int status;
 
 		if (pid <= 1)
 			throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
 
 		if (waitpid(pid, &status, WCONTINUED) != pid) // Ensure it resumed
-			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task.name, task.pid)));
+			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task->name, task->pid)));
 
 		if (WIFEXITED(status))
-			throw_with_trace(std::runtime_error("Command '" + task.cmd + "' with pid " + to_string(pid) + " exited unexpectedly with status " + to_string(WEXITSTATUS(status))));
+			throw_with_trace(std::runtime_error("Task {}:{} with pid {} exited unexpectedly with status {}"_format(task->id, task->name, task->pid, WEXITSTATUS(status))));
 	}
 }
 
@@ -308,10 +308,10 @@ std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 	auto res = std::vector<uint32_t>();
 	for (const auto &task : tasklist)
 	{
-		assert(task.cpus.size() > 0);
-		if (task.cpus.size() != 1)
+		assert(task->cpus.size() > 0);
+		if (task->cpus.size() != 1)
 			LOGWAR("Ignoring all cpus but the first");
-		res.push_back(task.cpus.front());
+		res.push_back(task->cpus.front());
 	}
 	return res;
 }
@@ -320,20 +320,20 @@ std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 // Kill and restart the tasks that have reached their exec limit
 void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events)
 {
-	for (auto &task : tasklist)
+	for (const auto &task : tasklist)
 	{
-		auto status = task.get_status();
+		auto status = task->get_status();
 		if (status == Task::Status::limit_reached || status == Task::Status::exited)
 		{
-			perf.clean(task.pid);
+			perf.clean(task->pid);
 			if (status == Task::Status::limit_reached)
 			{
-				LOGINF("Task {} ({}) limit reached, killing"_format(task.id, task.name));
-				task_kill(task);
+				LOGINF("Task {} ({}) limit reached, killing"_format(task->id, task->name));
+				task_kill(*task);
 			}
 			else if (status == Task::Status::exited)
 			{
-				LOGINF("Task {} ({}) finished"_format(task.id, task.name));
+				LOGINF("Task {} ({}) finished"_format(task->id, task->name));
 			}
 			else
 			{
@@ -341,14 +341,14 @@ void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<
 			}
 
 			// Restart task if the maximum number of restarts has not been reached
-			if (task.num_restarts < task.max_restarts)
+			if (task->num_restarts < task->max_restarts)
 			{
-				task_restart(task);
-				perf.setup_events(task.pid, events);
+				task_restart(*task);
+				perf.setup_events(task->pid, events);
 			}
 			else
 			{
-				task.set_status(Task::Status::done);
+				task->set_status(Task::Status::done);
 			}
 		}
 	}
@@ -400,7 +400,7 @@ void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLi
 	bool initial_clos_used = false;
 	for (const auto &task : tasklist)
 	{
-		if (task.initial_clos)
+		if (task->initial_clos)
 		{
 			initial_clos_used = true;
 			break;
@@ -415,8 +415,8 @@ void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLi
 
 	for (const auto &task : tasklist)
 	{
-		LOGINF("Map task {}:{} with PID {} to CLOS {}"_format(task.id, task.name, task.pid, task.initial_clos));
-		cat->add_task(task.initial_clos, task.pid);
+		LOGINF("Map task {}:{} with PID {} to CLOS {}"_format(task->id, task->name, task->pid, task->initial_clos));
+		cat->add_task(task->initial_clos, task->pid);
 	}
 }
 

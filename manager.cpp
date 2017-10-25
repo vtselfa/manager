@@ -97,20 +97,20 @@ void loop(
 		throw_with_trace(std::runtime_error("Max time must be positive and greater than 0"));
 
 	// Prepare Perf to measure events and initialize stats
-	for (auto &task : tasklist)
-		task.stats.init(perf.get_names(task.pid)[0]);
+	for (const auto &task : tasklist)
+		task->stats.init(perf.get_names(task->pid)[0]);
 
 	// Print headers
-	task_stats_print_headers(tasklist[0], out);
-	task_stats_print_headers(tasklist[0], ucompl_out);
-	task_stats_print_headers(tasklist[0], total_out);
+	task_stats_print_headers(*tasklist[0], out);
+	task_stats_print_headers(*tasklist[0], ucompl_out);
+	task_stats_print_headers(*tasklist[0], total_out);
 
 	// First reading of counters
-	for (auto &task : tasklist)
+	for (const auto &task : tasklist)
 	{
-		perf.enable_counters(task.pid);
-		const counters_t counters = perf.read_counters(task.pid)[0];
-		task.stats.accum(counters);
+		perf.enable_counters(task->pid);
+		const counters_t counters = perf.read_counters(task->pid)[0];
+		task->stats.accum(counters);
 	}
 
 	// Loop
@@ -133,15 +133,16 @@ void loop(
 		LOGDEB("Slept for {} us"_format(adj_delay_us));
 
 		// Read stats
-		for (auto &task : tasklist)
+		for (const auto &task : tasklist)
 		{
-			const counters_t counters = perf.read_counters(task.pid)[0];
-			task.stats.accum(counters);
+			const counters_t counters = perf.read_counters(task->pid)[0];
+			task->stats.accum(counters);
 		}
 
 		// Process tasks...
-		for (auto &task : tasklist)
+		for (const auto &task_ptr : tasklist)
 		{
+			Task &task = *task_ptr;
 			if (task.get_status() == Task::Status::done) continue;
 
 			// Test if the instruction limit has been reached
@@ -184,9 +185,9 @@ void loop(
 	// Print acumulated stats for non completed tasks and total stats for all the tasks
 	for (const auto &task : tasklist)
 	{
-		if (!task.completed)
-			task_stats_print_total(task, interval, ucompl_out);
-		task_stats_print_total(task, interval, total_out);
+		if (!task->completed)
+			task_stats_print_total(*task, interval, ucompl_out);
+		task_stats_print_total(*task, interval, total_out);
 	}
 }
 
@@ -228,8 +229,8 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 	LOGINF("Killing tasks...");
 	try
 	{
-		for (auto &task : tasklist)
-			task_kill(task);
+		for (const auto &task : tasklist)
+			task_kill(*task);
 	}
 	catch(const std::exception &e)
 	{
@@ -265,12 +266,12 @@ void clean_and_die(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 		LOGERR("Could not clean the performance counters: " << e.what());
 	}
 
-	for (auto &task : tasklist)
+	for (const auto &task : tasklist)
 	{
 		try
 		{
-			if (task.pid > 0)
-				task_kill(task);
+			if (task->pid > 0)
+				task_kill(*task);
 		}
 		catch (const std::exception &e)
 		{
@@ -466,8 +467,8 @@ int main(int argc, char *argv[])
 	{
 		// Execute and immediately pause tasks
 		LOGINF("Launching and pausing tasks");
-		for (auto &task : tasklist)
-			task_execute(task);
+		for (const auto &task : tasklist)
+			task_execute(*task);
 		tasks_map_to_initial_clos(tasklist, std::dynamic_pointer_cast<CATLinux>(cat));
 		LOGINF("Tasks ready");
 
@@ -475,8 +476,8 @@ int main(int argc, char *argv[])
 		auto events = vector<string>{"ref-cycles", "instructions"};
 		if (vm.count("event"))
 			events = vm["event"].as<vector<string>>();
-		for (auto &task : tasklist)
-			perf.setup_events(task.pid, events);
+		for (const auto &task : tasklist)
+			perf.setup_events(task->pid, events);
 
 		// Start doing things
 		LOGINF("Start main loop");

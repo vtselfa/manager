@@ -68,7 +68,7 @@ class Task
 
 	Status status = Status::runnable;
 };
-typedef std::vector<Task> tasklist_t;
+typedef std::vector<std::shared_ptr<Task>> tasklist_t;
 
 
 void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base);

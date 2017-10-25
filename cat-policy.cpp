@@ -144,7 +144,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 
 	// Put data in the format KMeans expects
 	LOGDEB("Tasks:");
-	for (const auto &task : tasklist)
+	for (const auto &task_ptr : tasklist)
 	{
 		uint64_t l3_hits;
 		uint64_t l3_misses;
@@ -153,6 +153,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		const std::string he = "MEM_LOAD_UOPS_RETIRED.L3_HIT";
 		const std::string me = "MEM_LOAD_UOPS_RETIRED.L3_MISS";
 		const std::string se = "CYCLE_ACTIVITY.STALLS_TOTAL";
+		const Task &task = *task_ptr;
 		const Stats &stats = task.stats;
 		try
 		{
@@ -184,7 +185,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 	if (min_stall_ratio > 0)
 	{
 		// Ratio of cycles stalled and cycles the execution has been running for the most stalled application
-		const double stall_ratio = acc::max(accum) / tasklist[0].stats.get_current("ref_cycles");
+		const double stall_ratio = acc::max(accum) / tasklist[0]->stats.get_current("ref_cycles");
 		if (stall_ratio < min_stall_ratio)
 		{
 			LOGDEB("Better to do nothing, since the processor is only stalled {}% of the time"_format(stall_ratio * 100));
@@ -327,7 +328,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			size_t i = 0;
 			for (const auto &p : clusters[c].getPoints())
 			{
-				const Task &task = tasklist[p->id];
+				const Task &task = *tasklist[p->id];
 				assert(task.cpus.size() == 1);
 				cat->add_cpu(c, task.cpus.front());
 				task_ids += std::to_string(p->id);

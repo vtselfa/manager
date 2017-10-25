@@ -160,7 +160,7 @@ class ClusterAndDistribute: public Base
 		{
 			for (const auto point : clusters[clos].getPoints())
 			{
-				get_cat()->add_task(clos, tasklist[point->id].pid);
+				get_cat()->add_task(clos, tasklist[point->id]->pid);
 			}
 		}
 	}

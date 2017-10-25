@@ -307,7 +307,7 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 
 		bool batch = tasks[i]["batch"] ? tasks[i]["batch"].as<bool>() : false;
 
-		result.push_back(Task(name, cmd, initial_clos, cpus, output, input, error, skel, max_instr, max_restarts, batch));
+		result.push_back(std::make_shared<Task>(name, cmd, initial_clos, cpus, output, input, error, skel, max_instr, max_restarts, batch));
 	}
 	return result;
 }
