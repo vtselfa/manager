@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <clocale>
 #include <iostream>
 #include <thread>
@@ -118,7 +119,7 @@ void loop(
 	int64_t adj_delay_us = time_int_us;
 	auto start_glob = std::chrono::system_clock::now();
 
-	// tasks_resume(tasklist);
+	tasklist_t runlist = tasklist_t(tasklist);
 	for (interval = 0; interval < max_int; interval++)
 	{
 		auto start_int = std::chrono::system_clock::now();
@@ -127,23 +128,22 @@ void loop(
 		LOGINF("Starting interval {} - {} us"_format(interval, chr::duration_cast<chr::microseconds> (start_int - start_glob).count()));
 
 		// Sleep
-		tasks_resume(tasklist);
+		tasks_resume(runlist);
 		sleep_for(chr::microseconds(adj_delay_us));
-		tasks_pause(tasklist);
+		tasks_pause(runlist);
 		LOGDEB("Slept for {} us"_format(adj_delay_us));
 
 		// Read stats
-		for (const auto &task : tasklist)
+		for (const auto &task : runlist)
 		{
 			const counters_t counters = perf.read_counters(task->pid)[0];
 			task->stats.accum(counters);
 		}
 
 		// Process tasks...
-		for (const auto &task_ptr : tasklist)
+		for (const auto &task_ptr : runlist)
 		{
 			Task &task = *task_ptr;
-			if (task.get_status() == Task::Status::done) continue;
 
 			// Test if the instruction limit has been reached
 			if (task.max_instr > 0 && task.stats.get_current("instructions") >=  task.max_instr)
@@ -173,10 +173,13 @@ void loop(
 			break;
 
 		// Restart the tasks that have reached their limit
-		tasks_kill_and_restart(tasklist, perf, events);
+		tasks_kill_and_restart(runlist, perf, events);
+
+		// Select tasks that are not done
+		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
 
 		// Adjust CAT according to the selected policy
-		catpol->apply(interval, tasklist);
+		catpol->apply(interval, runlist);
 
 		// Control elapsed time
 		adjust_time(start_int, start_glob, interval, time_int_us, adj_delay_us);
