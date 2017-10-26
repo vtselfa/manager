@@ -235,7 +235,7 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		required = {"app"};
-		allowed  = {"max_instr", "max_restarts", "define", "initial_clos"};
+		allowed  = {"max_instr", "max_restarts", "define", "initial_clos", "cpus"};
 		config_check_fields(tasks[i], required, allowed);
 
 		if (!tasks[i]["app"])
@@ -265,9 +265,9 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 
 		// CPU affinity
 		auto cpus = vector<uint32_t>();
-		if (tasks[i]["cpu"])
+		if (tasks[i]["cpus"])
 		{
-			auto node = tasks[i]["cpu"];
+			auto node = tasks[i]["cpus"];
 			assert(node.IsScalar() || node.IsSequence());
 			if (node.IsScalar())
 				cpus = {node.as<decltype (cpus)::value_type>()};

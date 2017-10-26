@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 
 #include <boost/filesystem.hpp>
+#include <cxx-prettyprint/prettyprint.hpp>
 #include <fmt/format.h>
 #include <glib.h>
 
@@ -169,6 +170,9 @@ void task_execute(Task &task)
 	if (!g_shell_parse_argv(task.cmd.c_str(), &argc, &argv, NULL))
 		throw_with_trace(std::runtime_error("Could not parse commandline '" + task.cmd + "'"));
 
+
+	LOGDEB("Task cpu affinity: " << task.cpus);
+
 	pid_t pid = fork();
 	switch (pid) {
 		// Child
@@ -181,7 +185,7 @@ void task_execute(Task &task)
 			}
 			catch (const std::exception &e)
 			{
-				cerr << "Error executing '" + task.cmd + "': " + e.what() << endl;
+				cerr << "Could not set cpu affinity for task {}:{}: {}"_format(task.id, task.name, e.what()) << endl;
 				exit(EXIT_FAILURE);
 			}
 
