@@ -326,12 +326,12 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 		if (c < clusters.size())
 		{
 			size_t i = 0;
-			for (const auto &p : clusters[c].getPoints())
+			for (const auto &point : clusters[c].getPoints())
 			{
-				const Task &task = *tasklist[p->id];
-				assert(task.cpus.size() == 1);
-				cat->add_cpu(c, task.cpus.front());
-				task_ids += std::to_string(p->id);
+				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &task){return point->id == task->id;});
+				assert(task->cpus.size() == 1);
+				cat->add_cpu(c, task->cpus.front());
+				task_ids += std::to_string(point->id);
 				task_ids += (i == clusters[c].getPoints().size() - 1) ? "" : ", ";
 				i++;
 			}

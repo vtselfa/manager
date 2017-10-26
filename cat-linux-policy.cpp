@@ -48,22 +48,21 @@ clusters_t Cluster_SF::apply(const tasklist_t &tasklist)
 	typedef std::pair<pid_t, uint64_t> pair_t;
 	auto v = std::vector<pair_t>();
 
-	for (uint32_t t = 0; t < tasklist.size(); t++)
+	for (const auto &task : tasklist)
 	{
 		uint64_t stalls;
-		const Task &task = *tasklist[t];
 		try
 		{
-			stalls = acc::sum(task.stats.events.at("cycle_activity.stalls_ldm_pending"));
+			stalls = acc::sum(task->stats.events.at("cycle_activity.stalls_ldm_pending"));
 		}
 		catch (const std::exception &e)
 		{
 			std::string msg = "This policy requires the event 'cycle_activity.stalls_ldm_pending'. The events monitorized are:";
-			for (const auto &kv : task.stats.events)
+			for (const auto &kv : task->stats.events)
 				msg += "\n" + kv.first;
 			throw_with_trace(std::runtime_error(msg));
 		}
-		v.push_back(std::make_pair(t, stalls));
+		v.push_back(std::make_pair(task->id, stalls));
 	}
 
 	// Sort in descending order by stalls
@@ -223,8 +222,8 @@ void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &cl
 		size_t p = 0;
 		for (const auto &point : points)
 		{
-			const Task &task = *tasklist[point->id];
-			task_ids += "{}:{}"_format(task.id, task.name);
+			const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &task){return point->id == task->id;});
+			task_ids += "{}:{}"_format(task->id, task->name);
 			task_ids += (p == points.size() - 1) ? "" : ", ";
 			p++;
 		}
