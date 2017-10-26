@@ -317,7 +317,8 @@ std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 }
 
 
-// Kill and restart the tasks that have reached their exec limit
+// Kill the tasks that have reached their exec limit, clean the exited ones,
+// and restart the applications that have not reached their maximum number of restarts
 void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events)
 {
 	for (const auto &task : tasklist)
@@ -328,14 +329,10 @@ void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<
 			perf.clean(task->pid);
 			if (status == Task::Status::limit_reached)
 			{
-				LOGINF("Task {} ({}) limit reached, killing"_format(task->id, task->name));
+				LOGINF("Task {}:{} limit reached, killing"_format(task->id, task->name));
 				task_kill(*task);
 			}
-			else if (status == Task::Status::exited)
-			{
-				LOGINF("Task {} ({}) finished"_format(task->id, task->name));
-			}
-			else
+			else if (status != Task::Status::exited)
 			{
 				throw_with_trace(std::runtime_error("Should not have reached this..."));
 			}

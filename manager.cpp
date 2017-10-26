@@ -130,25 +130,22 @@ void loop(
 		// Sleep
 		tasks_resume(runlist);
 		sleep_for(chr::microseconds(adj_delay_us));
-		tasks_pause(runlist);
+		tasks_pause(runlist); // Status can change from runnable -> exited
 		LOGDEB("Slept for {} us"_format(adj_delay_us));
-
-		// Read stats
-		for (const auto &task : runlist)
-		{
-			const counters_t counters = perf.read_counters(task->pid)[0];
-			task->stats.accum(counters);
-		}
 
 		// Process tasks...
 		for (const auto &task_ptr : runlist)
 		{
 			Task &task = *task_ptr;
 
+			// Read stats
+			const counters_t counters = perf.read_counters(task.pid)[0];
+			task.stats.accum(counters);
+
 			// Test if the instruction limit has been reached
 			if (task.max_instr > 0 && task.stats.get_current("instructions") >=  task.max_instr)
 			{
-				task.set_status(Task::Status::limit_reached);
+				task.set_status(Task::Status::limit_reached); // Status can change from runnable -> limit_reached
 				task.completed++;
 			}
 
@@ -164,6 +161,7 @@ void loop(
 				if (s == Task::Status::limit_reached || s == Task::Status::exited)
 					task_stats_print_total(task, interval, ucompl_out);
 			}
+
 			// Print interval stats
 			task_stats_print_interval(task, interval, out);
 		}
@@ -173,10 +171,13 @@ void loop(
 			break;
 
 		// Restart the tasks that have reached their limit
-		tasks_kill_and_restart(runlist, perf, events);
+		tasks_kill_and_restart(runlist, perf, events); // Status can change from (exited | limit_reached) -> done
 
 		// Select tasks that are not done
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
+
+		// Select tasks for next interval execution
+		// schedlist = sched(runlist);
 
 		// Adjust CAT according to the selected policy
 		catpol->apply(interval, runlist);
@@ -233,7 +234,8 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 	try
 	{
 		for (const auto &task : tasklist)
-			task_kill(*task);
+			if (task->get_status() != Task::Status::done)
+				task_kill(*task);
 	}
 	catch(const std::exception &e)
 	{
