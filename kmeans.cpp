@@ -381,7 +381,11 @@ size_t KMeans::clusterize(size_t k, const points_t &points, std::vector<Cluster>
 
 	const size_t total_points = points.size();
 
-	assert(k <= total_points);
+	if (total_points < k)
+	{
+		LOGWAR("There are less points ({}) than desired clusters ({}), so each point will go to a different cluster"_format(total_points, k));
+		k = total_points;
+	}
 
 	// Choose k distinct values for the centers of the clusters
 	initClusters(k, points, clusters);

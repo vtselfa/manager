@@ -550,6 +550,35 @@ TEST_F(KMeansTest, Clusterize)
 	ASSERT_TRUE(iters < 5U);
 }
 
+// Clusterize less points than desired clusters
+TEST_F(KMeansTest, ClusterizeLess)
+{
+	const int k = 16;
+	const int max_iter = 10;
+	std::vector<Cluster> clusters;
+
+	std::vector<point_ptr_t> points =
+	{
+		Point::create(1, {369342069}),
+		Point::create(2, {236950595}),
+		Point::create(3, {374689971}),
+		Point::create(4, {23961389}),
+		Point::create(5, {5440233}),
+		Point::create(6, {241292687}),
+		Point::create(7, {25111863}),
+		Point::create(8, {194790544})
+	};
+	size_t iters = KMeans::clusterize(k, points, clusters, max_iter);
+
+	ASSERT_TRUE(iters < max_iter);
+	ASSERT_EQ(points.size(), clusters.size());
+
+	for (const auto &c : clusters)
+	{
+		ASSERT_TRUE(c.getPoints().size() == 1);
+	}
+}
+
 
 	// double silhouette(const std::vector<Cluster> &clusters);
 	// size_t clusterize(size_t k, const std::vector<Point> &points, std::vector<Cluster> &clusters, size_t max_iter);
