@@ -33,7 +33,7 @@ class Base
 
 	Base() = default;
 
-	void set_cat(std::shared_ptr<CAT> cat)     { this->cat = cat; }
+	void set_cat(std::shared_ptr<CAT> _cat)    { cat = _cat; }
 	std::shared_ptr<CAT> get_cat()             { return cat; }
 	const std::shared_ptr<CAT> get_cat() const { return cat; }
 
@@ -65,7 +65,7 @@ class Slowfirst: public Base
 
 	public:
 
-	Slowfirst(uint64_t every, const std::vector<uint64_t> &masks) : Base(), every(every), masks(masks)
+	Slowfirst(uint64_t _every, const std::vector<uint64_t> &_masks) : Base(), every(_every), masks(_masks)
 	{
 		check_masks(masks);
 	}
@@ -74,7 +74,7 @@ class Slowfirst: public Base
 
 	// It's important to NOT make distinctions between completed and not completed tasks...
 	// We asume that the event we care about has been programed as ev2.
-	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist) {}
+	virtual void apply(uint64_t, const tasklist_t &) {}
 };
 typedef Slowfirst Sf;
 
@@ -90,12 +90,12 @@ class SlowfirstClustered: public Slowfirst
 
 	public:
 
-	SlowfirstClustered(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			Slowfirst(every, masks), num_clusters(num_clusters) {}
+	SlowfirstClustered(uint64_t _every, std::vector<uint64_t> _masks, size_t _num_clusters) :
+			Slowfirst(_every, _masks), num_clusters(_num_clusters) {}
 
 	virtual ~SlowfirstClustered() = default;
 
-	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist) {};
+	virtual void apply(uint64_t, const tasklist_t &) {};
 };
 typedef SlowfirstClustered SfC;
 
@@ -106,12 +106,12 @@ class SlowfirstClusteredAdjusted: public SlowfirstClustered
 {
 	public:
 
-	SlowfirstClusteredAdjusted(uint64_t every, std::vector<uint64_t> masks, size_t num_clusters) :
-			SlowfirstClustered(every, masks, num_clusters) {}
+	SlowfirstClusteredAdjusted(uint64_t _every, std::vector<uint64_t> _masks, size_t _num_clusters) :
+			SlowfirstClustered(_every, _masks, _num_clusters) {}
 
 	virtual ~SlowfirstClusteredAdjusted() = default;
 
-	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist) {}
+	virtual void apply(uint64_t, const tasklist_t &) {}
 };
 typedef SlowfirstClusteredAdjusted SfCA;
 
@@ -145,17 +145,17 @@ class SlowfirstClusteredOptimallyAdjusted: public SlowfirstClustered
 	const bool min_max;
 
 	// If num_clusters is not 0, then this number of clusters is used, instead of trying to find the optimal one
-	SlowfirstClusteredOptimallyAdjusted(uint64_t every, uint32_t num_clusters, const std::string &model_str, bool alternate_sides,
-			double min_stall_ratio, bool detect_outliers, const std::string &eval_clusters_str, const std::vector<uint32_t> &cluster_sizes, bool min_max)
+	SlowfirstClusteredOptimallyAdjusted(uint64_t _every, uint32_t _num_clusters, const std::string &_model_str, bool _alternate_sides,
+			double _min_stall_ratio, bool _detect_outliers, const std::string &_eval_clusters_str, const std::vector<uint32_t> &_cluster_sizes, bool _min_max)
 		:
-			SlowfirstClustered(every, {}, num_clusters),
-			model(model_str),
-			eval_clusters(str_to_evalclusters(eval_clusters_str)),
-			alternate_sides(alternate_sides),
-			min_stall_ratio(min_stall_ratio),
-			detect_outliers(detect_outliers),
-			cluster_sizes(cluster_sizes),
-			min_max(min_max)
+			SlowfirstClustered(_every, {}, _num_clusters),
+			model(_model_str),
+			eval_clusters(str_to_evalclusters(_eval_clusters_str)),
+			alternate_sides(_alternate_sides),
+			min_stall_ratio(_min_stall_ratio),
+			detect_outliers(_detect_outliers),
+			cluster_sizes(_cluster_sizes),
+			min_max(_min_max)
 	{}
 
 	virtual ~SlowfirstClusteredOptimallyAdjusted() = default;

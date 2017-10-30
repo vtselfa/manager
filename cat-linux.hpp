@@ -30,8 +30,8 @@ class CATInfo
 	public:
 
 	CATInfo() = default;
-	CATInfo(const std::string &cache, uint64_t cbm_mask, uint32_t min_cbm_bits, uint32_t num_closids) :
-			cache(cache), cbm_mask(cbm_mask), min_cbm_bits(min_cbm_bits), num_closids(num_closids) {}
+	CATInfo(const std::string &_cache, uint64_t _cbm_mask, uint32_t _min_cbm_bits, uint32_t _num_closids) :
+			cache(_cache), cbm_mask(_cbm_mask), min_cbm_bits(_min_cbm_bits), num_closids(_num_closids) {}
 
 	std::string cache;
 	uint64_t cbm_mask;

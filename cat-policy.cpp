@@ -25,19 +25,19 @@ namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
-void Slowfirst::set_masks(const std::vector<uint64_t> &masks)
+void Slowfirst::set_masks(const std::vector<uint64_t> &_masks)
 {
-	this->masks = masks;
+	masks = _masks;
 	for (uint32_t i = 0; i < masks.size(); i++)
 		cat->set_cbm(i, masks[i]);
 }
 
 
-void Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
+void Slowfirst::check_masks(const std::vector<uint64_t> &_masks) const
 {
 	uint64_t last_mask = 0;
 	std::string m;
-	for (auto mask : masks)
+	for (auto mask : _masks)
 	{
 		if (last_mask > mask)
 		{
@@ -56,7 +56,7 @@ void Slowfirst::check_masks(const std::vector<uint64_t> &masks) const
 // We will use 3 different models: a linear, a quadratic, and an exponential model.
 // Therefore we will have 3 different functions (fl, fq fe), defined for the intervals [0, al], [0, aq], and [0, ae].
 // Each one fulfills fn(0) == min_num_ways and fn(an) == max_num_ways and grows linearli, quadratically and exponentially, respectively.
-SfCOA::Model::Model(const std::string &name) : name(name)
+SfCOA::Model::Model(const std::string &_name) : name(_name)
 {
 	models =
 	{
@@ -328,7 +328,7 @@ void SlowfirstClusteredOptimallyAdjusted::apply(uint64_t current_interval, const
 			size_t i = 0;
 			for (const auto &point : clusters[c].getPoints())
 			{
-				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &task){return point->id == task->id;});
+				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &t){return point->id == t->id;});
 				assert(task->cpus.size() == 1);
 				cat->add_cpu(c, task->cpus.front());
 				task_ids += std::to_string(point->id);

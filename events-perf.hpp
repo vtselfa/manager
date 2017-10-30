@@ -25,8 +25,8 @@ struct Counter
 	double enabled = 0;
 
 	Counter() = default;
-	Counter(int id, const std::string &name, double value, const std::string &unit, bool snapshot, double enabled) :
-			id(id), name(name), value(value), unit(unit), snapshot(snapshot), enabled(enabled) {};
+	Counter(int _id, const std::string &_name, double _value, const std::string &_unit, bool _snapshot, double _enabled) :
+			id(_id), name(_name), value(_value), unit(_unit), snapshot(_snapshot), enabled(_enabled) {};
 	bool operator<(const Counter &c) const {return id < c.id;}
 };
 
@@ -60,8 +60,8 @@ class Perf
 		std::vector<struct perf_evlist*> groups;
 
 		EventDesc() = default;
-		EventDesc(const std::vector<struct perf_evlist*> &groups) :
-				groups(groups) {};
+		EventDesc(const std::vector<struct perf_evlist*> &_groups) :
+				groups(_groups) {};
 		void append(struct perf_evlist *ev_list) { groups.push_back(ev_list); }
 	};
 

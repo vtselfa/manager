@@ -29,7 +29,7 @@ class Cluster_SF: public ClusteringBase
 	int m;
 	std::vector<int> sizes;
 
-	Cluster_SF(const std::vector<int> &sizes) : sizes(sizes) {}
+	Cluster_SF(const std::vector<int> &_sizes) : sizes(_sizes) {}
 	virtual ~Cluster_SF() = default;
 
 	virtual clusters_t apply(const tasklist_t &tasklist) override;
@@ -46,10 +46,10 @@ class Cluster_KMeans: public ClusteringBase
 	std::string event;
 	bool sort_ascending;
 
-	Cluster_KMeans(int num_clusters, int max_clusters, EvalClusters eval_clusters, std::string event, bool sort_ascending) :
-			num_clusters(num_clusters), max_clusters(max_clusters),
-			eval_clusters(eval_clusters), event(event),
-			sort_ascending(sort_ascending) {}
+	Cluster_KMeans(int _num_clusters, int _max_clusters, EvalClusters _eval_clusters, std::string _event, bool _sort_ascending) :
+			num_clusters(_num_clusters), max_clusters(_max_clusters),
+			eval_clusters(_eval_clusters), event(_event),
+			sort_ascending(_sort_ascending) {}
 	virtual ~Cluster_KMeans() = default;
 
 	virtual clusters_t apply(const tasklist_t &tasklist) override;
@@ -71,7 +71,7 @@ class DistributingBase
 		max_ways = __builtin_popcount(info["L3"].cbm_mask);
 	}
 
-	DistributingBase(int min_ways, int max_ways) : min_ways(min_ways), max_ways(max_ways) {}
+	DistributingBase(int _min_ways, int _max_ways) : min_ways(_min_ways), max_ways(_max_ways) {}
 
 	uint32_t cut_mask(uint32_t mask)
 	{
@@ -91,8 +91,8 @@ class Distribute_N: public DistributingBase
 
 	public:
 
-	Distribute_N(int n): n(n) {}
-	Distribute_N(int min_ways, int max_ways, int n): DistributingBase(min_ways, max_ways), n(n) {}
+	Distribute_N(int _n): n(_n) {}
+	Distribute_N(int _min_ways, int _max_ways, int _n): DistributingBase(_min_ways, _max_ways), n(_n) {}
 	virtual ~Distribute_N() = default;
 
 	virtual ways_t apply(const tasklist_t &, const clusters_t &clusters) override;
@@ -105,7 +105,7 @@ class Distribute_Static: public DistributingBase
 
 	public:
 
-	Distribute_Static(const ways_t &masks) : masks(masks){}
+	Distribute_Static(const ways_t &_masks) : masks(_masks){}
 	virtual ~Distribute_Static() = default;
 
 	virtual ways_t apply(const tasklist_t &, const clusters_t &) override { return masks; }
@@ -119,9 +119,9 @@ class Distribute_RelFunc: public DistributingBase
 	public:
 
 	Distribute_RelFunc() = default;
-	Distribute_RelFunc(bool invert_metric) : invert_metric(invert_metric) {};
-	Distribute_RelFunc(int min_ways, int max_ways, bool invert_metric) :
-			DistributingBase(min_ways, max_ways), invert_metric(invert_metric) {};
+	Distribute_RelFunc(bool _invert_metric) : invert_metric(_invert_metric) {};
+	Distribute_RelFunc(int _min_ways, int _max_ways, bool _invert_metric) :
+			DistributingBase(_min_ways, _max_ways), invert_metric(_invert_metric) {};
 	virtual ~Distribute_RelFunc() = default;
 
 	virtual ways_t apply(const tasklist_t &, const clusters_t &clusters) override;
@@ -138,8 +138,8 @@ class ClusterAndDistribute: public Base
 	public:
 
 	ClusterAndDistribute() = delete;
-	ClusterAndDistribute(uint32_t every, ClusteringBase_ptr_t clustering, DistributingBase_ptr_t distributing) :
-			every(every), clustering(clustering), distributing(distributing) {}
+	ClusterAndDistribute(uint32_t _every, ClusteringBase_ptr_t _clustering, DistributingBase_ptr_t _distributing) :
+			every(_every), clustering(_clustering), distributing(_distributing) {}
 
 
 	std::shared_ptr<CATLinux> get_cat()
@@ -160,7 +160,7 @@ class ClusterAndDistribute: public Base
 		{
 			for (const auto point : clusters[clos].getPoints())
 			{
-				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &task){return point->id == task->id;});
+				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &t){return point->id == t->id;});
 				get_cat()->add_task(clos, task->pid);
 			}
 		}

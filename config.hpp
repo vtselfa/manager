@@ -14,7 +14,7 @@ struct Cos
 	uint64_t mask;              // Ways assigned mask
 	std::vector<uint32_t> cpus; // Associated CPUs
 
-	Cos(uint64_t mask, std::vector<uint32_t> cpus = {}) : mask(mask), cpus(cpus){}
+	Cos(uint64_t _mask, const std::vector<uint32_t> &_cpus = {}) : mask(_mask), cpus(_cpus) {}
 };
 
 

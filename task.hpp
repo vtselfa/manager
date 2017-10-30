@@ -46,15 +46,15 @@ class Task
 	uint32_t completed = 0;     // Number of times it has reached the instruction limit
 
 	Task() = delete;
-	Task(const std::string &name, const std::string &cmd, uint32_t initial_clos,
-			const std::vector<uint32_t> &cpus, const std::string &out, const std::string &in,
-			const std::string &err, const std::string &skel, uint64_t max_instr,
-			uint32_t max_restarts, bool batch) :
-		id(ID++), name(name), cmd(cmd),
-		initial_clos(initial_clos),
-		out(out), in(in), err(err), skel(skel),
-		max_instr(max_instr), max_restarts(max_restarts),
-		batch(batch), cpus(cpus) {}
+	Task(const std::string &_name, const std::string &_cmd, uint32_t _initial_clos,
+			const std::vector<uint32_t> &_cpus, const std::string &_out, const std::string &_in,
+			const std::string &_err, const std::string &_skel, uint64_t _max_instr,
+			uint32_t _max_restarts, bool _batch) :
+		id(ID++), name(_name), cmd(_cmd),
+		initial_clos(_initial_clos),
+		out(_out), in(_in), err(_err), skel(_skel),
+		max_instr(_max_instr), max_restarts(_max_restarts),
+		batch(_batch), cpus(_cpus) {}
 
 	static
 	const std::string status_to_str(const Status& s);

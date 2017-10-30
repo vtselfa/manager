@@ -47,6 +47,7 @@ flags = [
     '-Icxx-prettyprint/',
     '-Wall',
     '-Wextra',
+    '-Wshadow',
     '-Wimplicit-fallthrough=4',
     '-Wcast-align',
     '-Wcast-qual',

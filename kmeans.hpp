@@ -20,8 +20,8 @@ class Point
 	size_t id;
 	std::vector<double> values;
 
-	Point(size_t id, const std::vector<double>& values) :
-			id(id), values(values)
+	Point(size_t _id, const std::vector<double> &_values) :
+			id(_id), values(_values)
 	{
 		if (values.size() == 0)
 			throw_with_trace(std::runtime_error("A point must have at least one value"));
@@ -63,7 +63,7 @@ class Cluster
 
 	size_t id;
 
-	Cluster(size_t id, const std::vector<double> &centroid) : centroid(centroid), id(id)
+	Cluster(size_t _id, const std::vector<double> &_centroid) : centroid(_centroid), id(_id)
 	{
 		if (centroid.size() == 0)
 			throw_with_trace(std::runtime_error("A cluster cannot be created with an empty centroid"));
