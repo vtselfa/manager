@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <sstream>
 
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/sources/severity_logger.hpp>
@@ -45,4 +46,23 @@ namespace general_log
 
 	// SeverityLevel from string coming from istream
 	std::istream& operator>> (std::istream& in, SeverityLevel& unit);
+}
+
+
+template <typename It, typename F>
+std::string iterable_to_string(It first, It last, F func, std::string sep)
+{
+	size_t n = std::distance(first, last);
+	if (n <= 0) return "";
+
+	std::stringstream ss;
+	It it = first;
+	for (size_t i = 0; i < n - 1; i++)
+	{
+		ss << func(*it) << sep;
+		it++;
+	}
+	ss << func(*it);
+
+	return ss.str();
 }

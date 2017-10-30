@@ -43,6 +43,7 @@ flags = [
     '-I/usr/lib/glib-2.0/include/',
     '-Ifmt/',
     '-Ilibminiperf/',
+    '-Ilibcpuid/libcpuid/',
     '-Icxx-prettyprint/',
     '-Wall',
     '-Wextra',

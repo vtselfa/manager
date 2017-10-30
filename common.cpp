@@ -1,7 +1,6 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <glib.h>
-
 #include <fmt/format.h>
 #include <grp.h>
 

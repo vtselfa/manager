@@ -122,7 +122,7 @@ void task_resume(const Task &task)
 	int status;
 
 	if (pid <= 1)
-		throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
+		throw_with_trace(std::runtime_error("Task {}:{}: tried to send SIGCONT to pid {}, check for bugs"_format(task.id, task.name, task.pid)));
 
 	kill(pid, SIGCONT); // Resume process
 
@@ -150,7 +150,7 @@ void tasks_resume(const tasklist_t &tasklist)
 		int status;
 
 		if (pid <= 1)
-			throw_with_trace(std::runtime_error("Tried to send SIGCONT to pid " + to_string(pid) + ", check for bugs"));
+			throw_with_trace(std::runtime_error("Task {}:{}: tried to send SIGCONT to pid {}, check for bugs"_format(task->id, task->name, task->pid)));
 
 		if (waitpid(pid, &status, WCONTINUED) != pid) // Ensure it resumed
 			throw_with_trace(std::runtime_error("Error in waitpid for command '{}' with pid {}"_format(task->name, task->pid)));

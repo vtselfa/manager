@@ -333,7 +333,39 @@ YAML::Node merge(YAML::Node user, YAML::Node def)
 }
 
 
-void config_read(const string &path, const string &overlay, tasklist_t &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol)
+static
+sched::ptr_t config_read_sched(const YAML::Node &config)
+{
+	if (!config["sched"])
+		return std::make_shared<sched::Base>();
+	const auto &sched = config["sched"];
+
+	vector<string> required;
+	vector<string> allowed;
+
+	required = {"kind"};
+	allowed  = {"allowed_cpus"};
+	config_check_fields(sched, required, allowed);
+
+	string kind                   = sched["kind"].as<string>();
+	vector<uint32_t> allowed_cpus = sched["allowed_cpus"] ?
+			sched["allowed_cpus"].as<decltype(allowed_cpus)>() :
+			decltype(allowed_cpus)(); // Empty vector
+
+	if (kind == "none")
+		return std::make_shared<sched::Base>();
+
+	if (kind == "linux")
+		return std::make_shared<sched::Linux>(allowed_cpus);
+
+	if (kind == "random")
+		return std::make_shared<sched::Random>(allowed_cpus);
+
+	throw_with_trace(std::runtime_error("Invalid sched kind '{}'"_format(kind)));
+}
+
+
+void config_read(const string &path, const string &overlay, tasklist_t &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol, sched::ptr_t &sched)
 {
 	// The message outputed by YAML is not clear enough, so we test first
 	std::ifstream f(path);
@@ -367,4 +399,7 @@ void config_read(const string &path, const string &overlay, tasklist_t &tasklist
 		if (cos.cpus.empty())
 			std::cerr << "Warning: COS " + std::to_string(i) + " has no assigned CPUs" << std::endl;
 	}
+
+	// Read scheduler
+	sched = config_read_sched(config);
 }

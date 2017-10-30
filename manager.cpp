@@ -83,6 +83,7 @@ CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
 
 void loop(
 		tasklist_t &tasklist,
+		sched::ptr_t &sched,
 		std::shared_ptr<cat::policy::Base> catpol,
 		Perf &perf,
 		const vector<string> &events,
@@ -119,7 +120,8 @@ void loop(
 	int64_t adj_delay_us = time_int_us;
 	auto start_glob = std::chrono::system_clock::now();
 
-	tasklist_t runlist = tasklist_t(tasklist);
+	tasklist_t runlist = tasklist_t(tasklist); // Tasks that are not done
+	tasklist_t schedlist = sched->apply(runlist); // Tasks that the scheduler schedules to run
 	for (interval = 0; interval < max_int; interval++)
 	{
 		auto start_int = std::chrono::system_clock::now();
@@ -128,13 +130,13 @@ void loop(
 		LOGINF("Starting interval {} - {} us"_format(interval, chr::duration_cast<chr::microseconds> (start_int - start_glob).count()));
 
 		// Sleep
-		tasks_resume(runlist);
+		tasks_resume(schedlist);
 		sleep_for(chr::microseconds(adj_delay_us));
-		tasks_pause(runlist); // Status can change from runnable -> exited
+		tasks_pause(schedlist); // Status can change from runnable -> exited
 		LOGDEB("Slept for {} us"_format(adj_delay_us));
 
 		// Process tasks...
-		for (const auto &task_ptr : runlist)
+		for (const auto &task_ptr : schedlist)
 		{
 			Task &task = *task_ptr;
 
@@ -166,21 +168,25 @@ void loop(
 			task_stats_print_interval(task, interval, out);
 		}
 
+		// Restart the tasks that have reached their limit
+		tasks_kill_and_restart(schedlist, perf, events); // Status can change from (exited | limit_reached) -> done
+
 		// All the tasks have reached their limit -> finish execution
 		if (all_completed)
 			break;
 
-		// Restart the tasks that have reached their limit
-		tasks_kill_and_restart(runlist, perf, events); // Status can change from (exited | limit_reached) -> done
-
-		// Select tasks that are not done
+		// Remove tasks that are done from runlist
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
 
+		LOGDEB(iterable_to_string(runlist.begin(), runlist.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
+
 		// Select tasks for next interval execution
-		// schedlist = sched(runlist);
+		schedlist = sched->apply(runlist);
+
+		LOGDEB(iterable_to_string(schedlist.begin(), schedlist.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
 
 		// Adjust CAT according to the selected policy
-		catpol->apply(interval, runlist);
+		catpol->apply(interval, schedlist);
 
 		// Control elapsed time
 		adjust_time(start_int, start_glob, interval, time_int_us, adj_delay_us);
@@ -429,6 +435,7 @@ int main(int argc, char *argv[])
 	auto tasklist = tasklist_t();
 	auto coslist = vector<Cos>();
 	CAT_ptr_t cat;
+	sched::ptr_t sched;
 	auto perf = Perf();
 	auto catpol = std::make_shared<cat::policy::Base>(); // We want to use polimorfism, so we need a pointer
 	string config_file;
@@ -437,7 +444,7 @@ int main(int argc, char *argv[])
 		// Read config and set tasklist and coslist
 		config_file = vm["config"].as<string>();
 		string config_override = vm["config-override"].as<string>();
-		config_read(config_file, config_override, tasklist, coslist, catpol);
+		config_read(config_file, config_override, tasklist, coslist, catpol, sched);
 		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
 	catch(const YAML::ParserException &e)
@@ -486,7 +493,7 @@ int main(int argc, char *argv[])
 
 		// Start doing things
 		LOGINF("Start main loop");
-		loop(tasklist, catpol, perf, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
+		loop(tasklist, sched, catpol, perf, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, catpol->get_cat(), perf);
