@@ -178,12 +178,10 @@ void loop(
 		// Remove tasks that are done from runlist
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
 
-		LOGDEB(iterable_to_string(runlist.begin(), runlist.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
-
 		// Select tasks for next interval execution
 		schedlist = sched->apply(runlist);
 
-		LOGDEB(iterable_to_string(schedlist.begin(), schedlist.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
+		LOGDEB(iterable_to_string(schedlist.begin(), schedlist.end(), [](const auto &t) {return "{}:{}[{}]({})"_format(t->id, t->name, sched::Status(t->pid)("Cpus_allowed_list"), sched::Stat(t->pid).processor);}, " "));
 
 		// Adjust CAT according to the selected policy
 		catpol->apply(interval, schedlist);

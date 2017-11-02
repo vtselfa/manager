@@ -274,6 +274,10 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 			else
 				cpus = node.as<decltype(cpus)>();
 		}
+		else
+		{
+			cpus = sched::allowed_cpus();
+		}
 
 		// Initial CLOS
 		uint32_t initial_clos = tasks[i]["initial_clos"] ? tasks[i]["initial_clos"].as<decltype(initial_clos)>() : 0;
@@ -351,6 +355,9 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 	vector<uint32_t> allowed_cpus = sched["allowed_cpus"] ?
 			sched["allowed_cpus"].as<decltype(allowed_cpus)>() :
 			decltype(allowed_cpus)(); // Empty vector
+
+	if (allowed_cpus.empty())
+		allowed_cpus = sched::allowed_cpus();
 
 	if (kind == "none")
 		return std::make_shared<sched::Base>();
