@@ -1,6 +1,9 @@
 #pragma once
 
 #include <libcpuid.h>
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/rolling_mean.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
 
 #include "task.hpp"
 #include "throw-with-trace.hpp"
@@ -61,6 +64,19 @@ class Linux : public Base
 
 class Fair : public Base
 {
+	// Declare the 'accum_t' typedef
+	#define ACC boost::accumulators
+	typedef ACC::accumulator_set <
+		double,
+		ACC::stats <
+			ACC::tag::sum,
+			ACC::tag::rolling_mean>> accum_t;
+	#undef ACC
+	std::map<uint32_t, accum_t> stall_time;
+	std::map<uint32_t, bool> sched_last;
+
+	void outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower);
+
 	public:
 
 	Fair() = default;

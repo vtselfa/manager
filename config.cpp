@@ -368,6 +368,9 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 	if (kind == "random")
 		return std::make_shared<sched::Random>(allowed_cpus);
 
+	if (kind == "fair")
+		return std::make_shared<sched::Fair>(allowed_cpus);
+
 	throw_with_trace(std::runtime_error("Invalid sched kind '{}'"_format(kind)));
 }
 

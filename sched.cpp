@@ -7,6 +7,7 @@
 #include "sched.hpp"
 
 
+namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
@@ -65,12 +66,113 @@ const struct cpu_id_t& CpuId::operator()()
 }
 
 
+void Fair::outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower)
+{
+	acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance>> accum;
+
+	for(const auto &task : tasklist)
+	{
+		double value = acc::rolling_mean(stall_time.at(task->id));
+		accum(value);
+	}
+
+	double uth = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
+	double lth = acc::mean(accum) - 2 * std::sqrt(acc::variance(accum));
+	upper.clear();
+	lower.clear();
+	for(const auto &task : tasklist)
+	{
+		double value = acc::rolling_mean(stall_time.at(task->id));
+		if (value > uth)
+			upper.push_back(task);
+		if (value < lth)
+			lower.push_back(task);
+	}
+}
+
+
 tasklist_t Fair::apply(const tasklist_t &tasklist)
 {
-	// for (int cpu = 0; cpu < data.num_cores; cpu++)
-	// tasklist_t result;
-	//
-	return tasklist;
+	LOGDEB("Fair scheduling");
+
+	size_t max_num_tasks = cpus.size();
+	assert(!cpus.empty());
+
+	double cycles = 0;
+	if (!sched_last.empty())
+	{
+		for (const auto &task : tasklist)
+		{
+			if (sched_last.at(task->id))
+			{
+				cycles = task->stats.get_interval("cycles");
+				break;
+			}
+		}
+	}
+	assert(cycles || sched_last.empty());
+
+	for (const auto &task : tasklist)
+	{
+		// First exec of the task
+		if (sched_last.find(task->id) == sched_last.end())
+		{
+			sched_last.emplace(task->id, false);
+			stall_time.emplace(task->id, accum_t(acc::tag::rolling_window::window_size = 5));
+		}
+
+		// Every other exec
+		else
+		{
+			// If was not scheduled, then count the interval cycles as stalled
+			if (!sched_last.at(task->id))
+				stall_time.at(task->id)(cycles);
+			// If was scheduled then accumulate the stall cycles
+			else
+				stall_time.at(task->id)(task->stats.get_interval("cycle_activity.stalls_ldm_pending"));
+		}
+	}
+
+	// Detect outliers
+	tasklist_t upper, lower;
+	outliers(tasklist, upper, lower);
+	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
+	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
+
+	// Decide tasks to run
+	tasklist_t result(tasklist);
+	std::sort(result.begin(), result.end(),
+			[this](const auto &a, const auto &b)
+			{
+				return
+				acc::rolling_mean(stall_time.at(a->id)) >
+				acc::rolling_mean(stall_time.at(b->id));
+			});
+
+	// Print tasks and stall time
+	LOGDEB(iterable_to_string(result.begin(), result.end(),
+			[this](const auto &t)
+			{ return "{}:{}({})"_format(t->id, t->name, acc::rolling_mean(stall_time.at(t->id))); },
+			" "));
+
+
+	int surplus = tasklist.size() - max_num_tasks;
+	while(surplus > 0)
+	{
+		result.pop_back();
+		surplus--;
+	}
+	assert(result.size() == max_num_tasks || tasklist.size() < max_num_tasks);
+	Base::set_cpu_affinity(result);
+
+
+	// Store who has been scheduled
+	for (const auto &task : tasklist)
+		sched_last.at(task->id) = false;
+	for (const auto &task : result)
+		sched_last.at(task->id) = true;
+
+	return result;
 }
 
 
@@ -96,6 +198,7 @@ void Base::set_cpu_affinity(const tasklist_t &tasklist) const
 
 tasklist_t Base::apply(const tasklist_t &tasklist)
 {
+	LOGDEB("Linux scheduling");
 	set_cpu_affinity(tasklist);
 	return tasklist;
 }
@@ -103,6 +206,8 @@ tasklist_t Base::apply(const tasklist_t &tasklist)
 
 tasklist_t Random::apply(const tasklist_t &tasklist)
 {
+	LOGDEB("Random scheduling");
+
 	size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
 
