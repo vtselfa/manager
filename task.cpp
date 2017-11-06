@@ -46,6 +46,16 @@ void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base)
 }
 
 
+const task_ptr_t& tasks_find(const tasklist_t &tasklist, uint32_t id)
+{
+	const auto &it = std::find_if(tasklist.begin(), tasklist.end(), [id](const auto &t){return id == t->id;});
+	if (it == tasklist.end())
+		throw_with_trace(std::runtime_error("Task with id {} not foud"_format(id)));
+	else
+		return *it;
+}
+
+
 void task_create_rundir(const Task &task)
 {
 	// Create rundir, either empty or with the files from the skel dir
@@ -54,7 +64,6 @@ void task_create_rundir(const Task &task)
 	else
 		if (!fs::create_directories(task.rundir))
 			throw_with_trace(std::runtime_error("Could not create rundir directory " + task.rundir));
-
 }
 
 

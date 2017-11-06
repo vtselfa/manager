@@ -68,7 +68,8 @@ class Task
 
 	Status status = Status::runnable;
 };
-typedef std::vector<std::shared_ptr<Task>> tasklist_t;
+typedef std::shared_ptr<Task> task_ptr_t;
+typedef std::vector<task_ptr_t> tasklist_t;
 
 
 void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base);
@@ -77,6 +78,7 @@ void tasks_resume(const tasklist_t &tasklist);
 void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events);
 void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLinux> &cat);
 std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist);
+const task_ptr_t& tasks_find(const tasklist_t &tasklist, uint32_t id);
 
 void task_create_rundir(const Task &task);
 void task_remove_rundir(const Task &task);

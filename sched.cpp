@@ -1,8 +1,10 @@
 #include <algorithm>
+#include <random>
 #include <sstream>
 
 #include <fmt/format.h>
 
+#include "cat-linux-policy.hpp"
 #include "log.hpp"
 #include "sched.hpp"
 
@@ -139,32 +141,54 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
 	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
 
-	// Decide tasks to run
-	tasklist_t result(tasklist);
-	std::sort(result.begin(), result.end(),
-			[this](const auto &a, const auto &b)
-			{
-				return
-				acc::rolling_mean(stall_time.at(a->id)) >
-				acc::rolling_mean(stall_time.at(b->id));
-			});
+	auto clustering = cat::policy::Cluster_KMeans(4, cat_read_info()["L3"].num_closids, str_to_evalclusters("dunn"), "cycle_activity.stalls_ldm_pending", false);
+	auto clusters = clustering.apply(tasklist);
 
-	// Print tasks and stall time
-	LOGDEB(iterable_to_string(result.begin(), result.end(),
-			[this](const auto &t)
-			{ return "{}:{}({})"_format(t->id, t->name, acc::rolling_mean(stall_time.at(t->id))); },
-			" "));
-
-
-	int surplus = tasklist.size() - max_num_tasks;
-	while(surplus > 0)
+	for (size_t i = 0; i < clusters.size(); i++)
 	{
-		result.pop_back();
-		surplus--;
+		std::string task_ids;
+		const auto &points = clusters[i].getPoints();
+		size_t p = 0;
+		for (const auto &point : points)
+		{
+			const auto &task = tasks_find(tasklist, point->id);
+			task_ids += "{}:{}"_format(task->id, task->name);
+			task_ids += (p == points.size() - 1) ? "" : ", ";
+			p++;
+		}
+		LOGDEB(fmt::format("{{Cluster {}: {{tasks: [{}]}}}}", i, task_ids));
 	}
+
+	std::vector<uint32_t> table;
+	auto weights = std::vector<int>{1, 2, 4, 8};
+	for (size_t i = 0; i < clusters.size(); i++)
+	{
+		for (const auto &point : clusters[i].getPoints())
+		{
+			const auto &task = tasks_find(tasklist, point->id);
+			for (int j = 0; j < weights[i]; j++)
+				table.push_back(task->id);
+		}
+	}
+
+	// Decide tasks to run
+	tasklist_t result;
+	std::default_random_engine generator;
+	for (size_t i = 0; i < std::min(max_num_tasks, tasklist.size()); i++)
+	{
+		std::uniform_int_distribution<int> distribution(0, table.size() - 1);
+		uint32_t pos = distribution(generator);
+		uint32_t id = table[pos];
+		const auto &task = tasks_find(tasklist, id);
+
+		// Delete from table
+		table.erase(std::remove_if(table.begin(), table.end(), [id](auto v){return v == id;}), table.end());
+
+		result.push_back(task);
+	}
+
 	assert(result.size() == max_num_tasks || tasklist.size() < max_num_tasks);
 	Base::set_cpu_affinity(result);
-
 
 	// Store who has been scheduled
 	for (const auto &task : tasklist)

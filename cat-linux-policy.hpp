@@ -160,7 +160,7 @@ class ClusterAndDistribute: public Base
 		{
 			for (const auto point : clusters[clos].getPoints())
 			{
-				const auto &task = *std::find_if(tasklist.begin(), tasklist.end(), [&point](const auto &t){return point->id == t->id;});
+				const auto &task = tasks_find(tasklist, point->id);
 				get_cat()->add_task(clos, task->pid);
 			}
 		}
