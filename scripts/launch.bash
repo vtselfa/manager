@@ -14,7 +14,7 @@ echo 2200000 | tee /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq > /d
 # Save manager binary
 cp /home/viselol/manager/manager .
 
-EVENTS=${EVENTS-cpu/umask=0x04,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_HIT/ -e cpu/umask=0x20,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_MISS/ -e cpu/umask=0x04,event=0xA3,name=CYCLE_ACTIVITY.STALLS_TOTAL,cmask=4/ -e cpu/umask=0x06,event=0xA3,name=CYCLE_ACTIVITY.STALLS_LDM_PENDING,cmask=6/}
+EVENTS=${EVENTS-instructions,cycles,mem_load_uops_retired.l2_hit,mem_load_uops_retired.l2_miss,mem_load_uops_retired.l3_hit,mem_load_uops_retired.l3_miss,cycle_activity.stalls_ldm_pending,intel_cqm/llc_occupancy/}
 
 echo Events: ${EVENTS}
 
