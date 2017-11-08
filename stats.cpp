@@ -18,17 +18,17 @@ namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
-Stats::Stats(const std::vector<std::string> &counters)
+Stats::Stats(const std::vector<std::string> &stats_names)
 {
-	init(counters);
+	init(stats_names);
 }
 
 
-void Stats::init_derived_metrics_total(const std::vector<std::string> &counters)
+void Stats::init_derived_metrics_total(const std::vector<std::string> &stats_names)
 {
-	bool instructions = std::find(counters.begin(), counters.end(), "instructions") != counters.end();
-	bool cycles = std::find(counters.begin(), counters.end(), "cycles") != counters.end();
-	bool ref_cycles = std::find(counters.begin(), counters.end(), "ref-cycles") != counters.end();
+	bool instructions = std::find(stats_names.begin(), stats_names.end(), "instructions") != stats_names.end();
+	bool cycles = std::find(stats_names.begin(), stats_names.end(), "cycles") != stats_names.end();
+	bool ref_cycles = std::find(stats_names.begin(), stats_names.end(), "ref-cycles") != stats_names.end();
 
 	if (instructions && cycles)
 	{
@@ -52,11 +52,11 @@ void Stats::init_derived_metrics_total(const std::vector<std::string> &counters)
 }
 
 
-void Stats::init_derived_metrics_int(const std::vector<std::string> &counters)
+void Stats::init_derived_metrics_int(const std::vector<std::string> &stats_names)
 {
-	bool instructions = std::find(counters.begin(), counters.end(), "instructions") != counters.end();
-	bool cycles = std::find(counters.begin(), counters.end(), "cycles") != counters.end();
-	bool ref_cycles = std::find(counters.begin(), counters.end(), "ref-cycles") != counters.end();
+	bool instructions = std::find(stats_names.begin(), stats_names.end(), "instructions") != stats_names.end();
+	bool cycles = std::find(stats_names.begin(), stats_names.end(), "cycles") != stats_names.end();
+	bool ref_cycles = std::find(stats_names.begin(), stats_names.end(), "ref-cycles") != stats_names.end();
 	if (instructions && cycles)
 	{
 		derived_metrics_int.push_back(std::make_pair("ipc", [this]()
@@ -79,15 +79,15 @@ void Stats::init_derived_metrics_int(const std::vector<std::string> &counters)
 }
 
 
-void Stats::init(const std::vector<std::string> &counters)
+void Stats::init(const std::vector<std::string> &stats_names)
 {
 	assert(!initialized);
 
-	for (const auto &c : counters)
+	for (const auto &c : stats_names)
 		events.insert(std::make_pair(c, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
 
-	init_derived_metrics_int(counters);
-	init_derived_metrics_total(counters);
+	init_derived_metrics_int(stats_names);
+	init_derived_metrics_total(stats_names);
 
 	// Test der metrics
 	if (derived_metrics_int.size() != derived_metrics_total.size())
@@ -105,7 +105,7 @@ void Stats::init(const std::vector<std::string> &counters)
 		events.insert(std::make_pair(der.first, accum_t(acc::tag::rolling_window::window_size = WIN_SIZE)));
 
 	// Store the names of the counters
-	names = counters;
+	names = stats_names;
 
 	initialized = true;
 }
@@ -194,24 +194,25 @@ std::string Stats::data_to_string_total(const std::string &sep) const
 
 	assert(curr.size() > 0);
 
-	const auto &name_index = curr.get<by_name>();
-	for (size_t i = 0; i < names.size(); i++)
+	const auto &curr_id_idx = curr.get<by_id>();
+	auto it = curr_id_idx.cbegin();
+	while (it != curr_id_idx.cend())
 	{
-		const auto &name = names[i];
+		const auto &name = it->name;
 		const accum_t &event = events.at(name);
-		const auto &c = name_index.find(name);
-		double value = c->snapshot ?
+		double value = it->snapshot ?
 				acc::mean(event) :
 				acc::sum(event);
 		ss << value;
-		if (i < names.size() - 1)
+		it++;
+		if (it != curr_id_idx.cend())
 			ss << sep;
 	}
 
 	// Derived metrics
-	for (auto it = derived_metrics_total.cbegin(); it != derived_metrics_total.cend(); it++)
+	for (auto it1 = derived_metrics_total.cbegin(); it1 != derived_metrics_total.cend(); it1++)
 	{
-		double value = it->second();
+		double value = it1->second();
 		ss << sep << value;
 	}
 

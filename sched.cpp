@@ -202,8 +202,6 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 
 void Base::set_cpu_affinity(const tasklist_t &tasklist) const
 {
-	cpu_set_t empty_mask;
-	CPU_ZERO(&empty_mask);
 	for (const auto &task : tasklist)
 	{
 		cpu_set_t task_mask = array_to_cpu_set_t(task->cpus);

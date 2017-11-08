@@ -19,17 +19,6 @@
 #include "task.hpp"
 
 
-// Some predefined events, used when no events are supplied, but only tested in the Intel Xeon e5 2658A v3, so be carefull
-#define L1_HITS   "cpu/umask=0x01,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L1_HIT/"
-#define L1_MISSES "cpu/umask=0x08,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L1_MISS/"
-#define L2_HITS   "cpu/umask=0x02,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L2_HIT/"
-#define L2_MISSES "cpu/umask=0x10,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L2_MISS/"
-#define L3_HITS   "cpu/umask=0x04,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_HIT/"
-#define L3_MISSES "cpu/umask=0x20,event=0xD1,name=MEM_LOAD_UOPS_RETIRED.L3_MISS/"
-#define STALLS_L2_PENDING  "cpu/umask=0x05,event=0xA3,name=CYCLE_ACTIVITY.STALLS_L2_PENDING,cmask=5/"
-#define STALLS_LDM_PENDING "cpu/umask=0x06,event=0xA3,name=CYCLE_ACTIVITY.STALLS_LDM_PENDING,cmask=6/"
-
-
 namespace po = boost::program_options;
 namespace chr = std::chrono;
 

@@ -7,8 +7,6 @@
 #include <boost/filesystem.hpp>
 
 
-std::ofstream open_ofstream(const std::string &path);
-std::ifstream open_ifstream(const std::string &path);
 std::ifstream open_ifstream(const boost::filesystem::path &path);
 std::ofstream open_ofstream(const boost::filesystem::path &path);
 
