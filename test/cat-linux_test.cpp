@@ -89,7 +89,6 @@ TEST_F(CATLinuxAPI, SetGetCBM)
 	// Invalid CBMs
 	ASSERT_THROW(cat.set_cbm(0, 0x0), std::runtime_error);
 	ASSERT_THROW(cat.set_cbm(0, cbm), std::runtime_error);
-	ASSERT_THROW(cat.set_cbm(0, 0x5), std::runtime_error);
 }
 
 TEST_F(CATLinuxAPI, AddCPU)

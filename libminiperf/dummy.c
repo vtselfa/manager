@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-bool use_browser = false;
-const char* perf_version_string = "";
 struct scripting_ops;
 int script_spec_register(const char *spec, struct scripting_ops *ops) {return 0;}
 
