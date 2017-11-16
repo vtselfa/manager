@@ -263,65 +263,65 @@ applications:
     <%text>
     blackscholes: &blackscholes
       name: blackscholes
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/blackscholes/obj/amd64-linux.gcc/blackscholes ${NTHREADS} in_10M.txt prices.txt
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/blackscholes/inst/amd64-linux.gcc/bin/blackscholes ${NTHREADS} in_10M.txt prices.txt
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/blackscholes/inputs/native
 
     bodytrack: &bodytrack
       name: bodytrack
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/bodytrack/obj/amd64-linux.gcc/bodytrack sequenceB_261 4 261 4000 5 0 ${NTHREADS}
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/bodytrack/inst/amd64-linux.gcc/bin/bodytrack sequenceB_261 4 261 4000 5 0 ${NTHREADS}
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/bodytrack/inputs/native
 
     facesim: &facesim
       name: facesim
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/facesim/obj/amd64-linux.gcc/facesim -timing -threads ${NTHREADS} -lastframe 100
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/facesim/inst/amd64-linux.gcc/bin/facesim -timing -threads ${NTHREADS} -lastframe 100
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/facesim/inputs/native
 
     ferret: &ferret
       name: ferret
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/ferret/obj/amd64-linux.gcc/ferret corel lsh queries 50 20 ${NTHREADS} output.txt
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/ferret/inst/amd64-linux.gcc/bin/ferret corel lsh queries 50 20 ${NTHREADS} output.txt
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/ferret/inputs/native
 
     fluidanimate: &fluidanimate
       name: fluidanimate
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/fluidanimate/obj/amd64-linux.gcc/fluidanimate ${NTHREADS} 500 in_500K.fluid out.fluid
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/fluidanimate/inst/amd64-linux.gcc/bin/fluidanimate ${NTHREADS} 500 in_500K.fluid out.fluid
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/fluidanimate/inputs/native
 
     freqmine: &freqmine
       name: freqmine
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/freqmine/obj/amd64-linux.gcc/freqmine webdocs_250k.dat 11000
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/freqmine/inst/amd64-linux.gcc/bin/freqmine webdocs_250k.dat 11000
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/freqmine/inputs/native
 
     raytrace: &raytrace
       name: raytrace
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/raytrace/obj/amd64-linux.gcc/raytrace thai_statue.obj -automove -nthreads ${NTHREADS} -frames 200 -res 1920 1080
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/raytrace/inst/amd64-linux.gcc/bin/rtview thai_statue.obj -automove -nthreads ${NTHREADS} -frames 200 -res 1920 1080
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/raytrace/inputs/native
 
     swaptions: &swaptions
       name: swaptions
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/swaptions/obj/amd64-linux.gcc/swaptions -ns 128 -sm 1000000 -nt ${NTHREADS}
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/swaptions/inst/amd64-linux.gcc/bin/swaptions -ns 128 -sm 1000000 -nt ${NTHREADS}
 
     vips: &vips
       name: vips
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/vips/obj/amd64-linux.gcc/vips im_benchmark orion_18000x18000.v output.v
+      cmd: env IM_CONCURRENCY=${NTHREADS} /home/benchmarks/parsec-3.0/pkgs/apps/vips/inst/amd64-linux.gcc/bin/vips im_benchmark orion_18000x18000.v output.v
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/vips/inputs/native
 
     x264: &x264
       name: x264
-      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/x264/obj/amd64-linux.gcc/x264 --quiet --qp 20 --partitions b8x8,i4x4 --ref 5 --direct auto --b-pyramid --weightb --mixed-refs --no-fast-pskip --me umh --subme 7 --analyse b8x8,i4x4 --threads ${NTHREADS} -o eledream.264 eledream_1920x1080_512.y4m
+      cmd: /home/benchmarks/parsec-3.0/pkgs/apps/x264/inst/amd64-linux.gcc/bin/x264 --quiet --qp 20 --partitions b8x8,i4x4 --ref 5 --direct auto --weightb --mixed-refs --no-fast-pskip --me umh --subme 7 --analyse b8x8,i4x4 --threads ${NTHREADS} -o eledream.264 eledream_1920x1080_512.y4m
       skel: /home/benchmarks/parsec-3.0/pkgs/apps/x264/inputs/native
 
     canneal: &canneal
       name: canneal
-      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/canneal/obj/amd64-linux.gcc/canneal ${NTHREADS} 15000 2000 2500000.nets 6000
+      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/canneal/inst/amd64-linux.gcc/bin/canneal ${NTHREADS} 15000 2000 2500000.nets 6000
       skel: /home/benchmarks/parsec-3.0/pkgs/kernels/canneal/inputs/native
 
     dedup: &dedup
       name: dedup
-      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/dedup/obj/amd64-linux.gcc/dedup -c -p -v -t ${NTHREADS} -i FC-6-x86_64-disc1.iso -o output.dat.ddp
+      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/dedup/inst/amd64-linux.gcc/bin/dedup -c -p -v -t ${NTHREADS} -i FC-6-x86_64-disc1.iso -o output.dat.ddp
       skel: /home/benchmarks/parsec-3.0/pkgs/kernels/dedup/inputs/native
 
     streamcluster: &streamcluster
       name: streamcluster
-      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/streamcluster/obj/amd64-linux.gcc/streamcluster 10 20 128 1000000 200000 5000 none output.txt ${NTHREADS}
+      cmd: /home/benchmarks/parsec-3.0/pkgs/kernels/streamcluster/inst/amd64-linux.gcc/bin/streamcluster 10 20 128 1000000 200000 5000 none output.txt ${NTHREADS}
     </%text>
 
