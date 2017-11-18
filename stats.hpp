@@ -11,6 +11,7 @@
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/variance.hpp>
 
+#include "accum-last.hpp"
 #include "events-perf.hpp"
 
 
@@ -21,6 +22,7 @@ class Stats
 	typedef ACC::accumulator_set <
 		double,
 		ACC::stats <
+			ACC::tag::last,
 			ACC::tag::sum,
 			ACC::tag::mean,
 			ACC::tag::variance,

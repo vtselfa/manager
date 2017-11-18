@@ -5,6 +5,7 @@
 #include <boost/io/ios_state.hpp>
 #include <fmt/format.h>
 
+#include "log.hpp"
 #include "stats.hpp"
 #include "throw-with-trace.hpp"
 
@@ -117,17 +118,44 @@ Stats& Stats::accum(const counters_t &counters)
 	last = curr;
 	curr = counters;
 
-	const auto &curr_by_id = curr.get<by_id>();
-	const auto &last_by_name = last.get<by_name>();
+	const auto &curr_id_idx = curr.get<by_id>();
+	const auto &last_id_idx = last.get<by_id>();
 
-	for (const auto &c : curr_by_id)
+	assert(!curr.empty());
+
+	// App has just started, no last data
+	if (last.empty())
 	{
-		auto last_value_it = last_by_name.find(c.name);
-		double value = c.snapshot || last.size() == 0 ?
-				c.value :
-				c.value - last_value_it->value;
-		assert(value >= 0);
-		events.at(c.name)(value); // Add it to the accumulator
+		auto it = curr_id_idx.cbegin();
+		while (it != curr_id_idx.cend())
+		{
+			events.at(it->name)(it->value);
+			it++;
+		}
+	}
+
+	// We have data from the last interval
+	else
+	{
+		assert(curr.size() == last.size());
+		auto curr_it = curr_id_idx.cbegin();
+		auto last_it = last_id_idx.cbegin();
+		while (curr_it != curr_id_idx.cend() && last_it != last_id_idx.cend())
+		{
+			const Counter &c = *curr_it;
+			const Counter &l = *last_it;
+			assert(c.id == l.id);
+			assert(c.name == l.name);
+			double value = c.snapshot ?
+					c.value :
+					c.value - l.value;
+			if (value < 0)
+				LOGERR("Negative interval value ({}) for the counter '{}'"_format(value, c.name));
+			events.at(c.name)(value);
+
+			curr_it++;
+			last_it++;
+		}
 	}
 
 	// Compute and add derived metrics
@@ -194,46 +222,19 @@ std::string Stats::data_to_string_total(const std::string &sep) const
 std::string Stats::data_to_string_int(const std::string &sep) const
 {
 	std::stringstream ss;
-	const auto &curr_id_idx = curr.get<by_id>();
-	const auto &last_id_idx = last.get<by_id>();
 
 	assert(curr.size() > 0);
 
-	// App has just started, no last data
-	if (last.size() == 0)
-	{
-		auto it = curr_id_idx.cbegin();
-		while (it != curr_id_idx.cend())
-		{
-			ss << it->value;
-			it++;
-			if (it != curr_id_idx.end())
-				ss << sep;
-		}
-	}
+	const auto &curr_id_idx = curr.get<by_id>();
 
-	// We have data from the last interval
-	else
+	auto curr_it = curr_id_idx.cbegin();
+	while (curr_it != curr_id_idx.cend())
 	{
-		assert(curr.size() == last.size());
-		auto curr_it = curr_id_idx.cbegin();
-		auto last_it = last_id_idx.cbegin();
-		while (curr_it != curr_id_idx.cend() && last_it != last_id_idx.cend())
-		{
-			const Counter &c = *curr_it;
-			const Counter &l = *last_it;
-			assert(c.id == l.id);
-			assert(c.name == l.name);
-			double value = c.snapshot ?
-					c.value :
-					c.value - l.value;
-			ss << value;
-			curr_it++;
-			last_it++;
+		ss << acc::last(events.at(curr_it->name));
+		curr_it++;
 
-			if (curr_it != curr.cend())
-				ss << sep;
-		}
+		if (curr_it != curr.cend())
+			ss << sep;
 	}
 
 	// Derived metrics
