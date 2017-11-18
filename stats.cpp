@@ -129,7 +129,10 @@ Stats& Stats::accum(const counters_t &counters)
 		auto it = curr_id_idx.cbegin();
 		while (it != curr_id_idx.cend())
 		{
-			events.at(it->name)(it->value);
+			double value = (it->name == "power/energy-ram/" || it->name == "power/energy-pkg/") ?
+					0 :
+					it->value;
+			events.at(it->name)(value);
 			it++;
 		}
 	}
