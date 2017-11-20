@@ -17,9 +17,8 @@ namespace sched
 {
 
 cpu_set_t array_to_cpu_set_t(const std::vector<uint32_t> &cpus);
-
-
-CpuId cpu_id = CpuId();
+std::vector<uint32_t> allowed_cpus();
+std::vector<uint32_t> allowed_cpus(pid_t pid);
 
 
 cpu_set_t array_to_cpu_set_t(const std::vector<uint32_t> &cpus)
@@ -48,23 +47,6 @@ std::vector<uint32_t> allowed_cpus(pid_t pid)
 			result.push_back(i);
 	}
 	return result;
-}
-
-
-const struct cpu_id_t& CpuId::operator()()
-{
-	if (!initialized)
-	{
-		struct cpu_raw_data_t raw;
-		if (!cpuid_present())
-			throw_with_trace(std::runtime_error("Your CPU doesn't support CPUID"));
-		if (cpuid_get_raw_data(&raw) < 0)
-			throw_with_trace(std::runtime_error("Could not get raw data to identify cpu"));
-		if (cpu_identify(&raw, &data) < 0)
-			throw_with_trace(std::runtime_error("Could not identify cpu"));
-		initialized = true;
-	}
-	return data;
 }
 
 

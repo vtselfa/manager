@@ -342,6 +342,7 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 {
 	if (!config["sched"])
 		return std::make_shared<sched::Base>();
+
 	const auto &sched = config["sched"];
 
 	vector<string> required;
@@ -356,14 +357,8 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 			sched["allowed_cpus"].as<decltype(allowed_cpus)>() :
 			decltype(allowed_cpus)(); // Empty vector
 
-	if (allowed_cpus.empty())
-		allowed_cpus = sched::allowed_cpus();
-
-	if (kind == "none")
-		return std::make_shared<sched::Base>();
-
 	if (kind == "linux")
-		return std::make_shared<sched::Linux>(allowed_cpus);
+		return std::make_shared<sched::Base>(allowed_cpus);
 
 	if (kind == "random")
 		return std::make_shared<sched::Random>(allowed_cpus);

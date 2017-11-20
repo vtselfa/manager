@@ -16,19 +16,7 @@ std::vector<uint32_t> allowed_cpus();
 std::vector<uint32_t> allowed_cpus(pid_t pid);
 
 
-class CpuId
-{
-	bool initialized = false;
-	struct cpu_id_t data;
-
-	public:
-
-	CpuId() = default;
-	const struct cpu_id_t& operator()();
-};
-extern CpuId cpu_id;
-
-
+// Linux scheduler
 class Base
 {
 	protected:
@@ -41,7 +29,7 @@ class Base
 
 	public:
 
-	Base() = default;
+	Base() : cpus(allowed_cpus()) {};
 	Base(const std::vector<uint32_t> &_cpus) : cpus(_cpus) {};
 	~Base() = default;
 
@@ -49,17 +37,6 @@ class Base
 	virtual tasklist_t apply(const tasklist_t &tasklist);
 };
 typedef std::shared_ptr<Base> ptr_t;
-
-
-// Just do as the base class
-class Linux : public Base
-{
-	public:
-
-	Linux() = default;
-	Linux(const std::vector<uint32_t> &_cpus) : Base(_cpus) {};
-	~Linux() = default;
-};
 
 
 class Fair : public Base
