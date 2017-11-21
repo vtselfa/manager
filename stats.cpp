@@ -162,7 +162,13 @@ Stats& Stats::accum(const counters_t &counters)
 					c.value - l.value;
 
 			if (value < 0)
-				LOGERR("Negative interval value ({}) for the counter '{}'"_format(value, c.name));
+			{
+				// We assume there has been an overflow with the energy, and we try to correct it
+				assert(c.name == "power/energy-ram/" || c.name == "power/energy-pkg/");
+				uint32_t newvalue = (uint32_t) c.value - (uint32_t) l.value;
+				LOGERR("Negative interval value ({}) for the counter '{}', it has been raplaced by {}"_format(value, c.name, newvalue));
+				value = newvalue;
+			}
 
 			assert(c.enabled > 0 && c.enabled <= 1);
 			if (c.enabled < 1)
