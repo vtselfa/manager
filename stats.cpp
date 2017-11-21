@@ -34,8 +34,8 @@ void Stats::init_derived_metrics_total(const std::vector<std::string> &stats_nam
 	{
 		derived_metrics_total.push_back(std::make_pair("ipc", [this]()
 		{
-			double inst = acc::sum(this->events.at("instructions"));
-			double cycl = acc::sum(this->events.at("cycles"));
+			double inst = this->sum("instructions");
+			double cycl = this->sum("cycles");
 			return inst / cycl;
 		}));
 	}
@@ -44,8 +44,8 @@ void Stats::init_derived_metrics_total(const std::vector<std::string> &stats_nam
 	{
 		derived_metrics_total.push_back(std::make_pair("ref-ipc", [this]()
 		{
-			double inst = acc::sum(this->events.at("instructions"));
-			double ref_cycl = acc::sum(this->events.at("ref-cycles"));
+			double inst = this->sum("instructions");
+			double ref_cycl = this->sum("ref-cycles");
 			return inst / ref_cycl;
 		}));
 	}
@@ -61,8 +61,8 @@ void Stats::init_derived_metrics_int(const std::vector<std::string> &stats_names
 	{
 		derived_metrics_int.push_back(std::make_pair("ipc", [this]()
 		{
-			double inst = this->get_interval("instructions");
-			double cycl = this->get_interval("cycles");
+			double inst = this->last("instructions");
+			double cycl = this->last("cycles");
 			return inst / cycl;
 		}));
 	}
@@ -71,8 +71,8 @@ void Stats::init_derived_metrics_int(const std::vector<std::string> &stats_names
 	{
 		derived_metrics_int.push_back(std::make_pair("ref-ipc", [this]()
 		{
-			double inst = this->get_interval("instructions");
-			double ref_cycl = this->get_interval("ref-cycles");
+			double inst = this->last("instructions");
+			double ref_cycl = this->last("ref-cycles");
 			return inst / ref_cycl;
 		}));
 	}
@@ -115,16 +115,16 @@ Stats& Stats::accum(const counters_t &counters)
 {
 	assert(initialized);
 
-	last = curr;
-	curr = counters;
+	clast = ccurr;
+	ccurr = counters;
 
-	const auto &curr_id_idx = curr.get<by_id>();
-	const auto &last_id_idx = last.get<by_id>();
+	const auto &curr_id_idx = ccurr.get<by_id>();
+	const auto &last_id_idx = clast.get<by_id>();
 
-	assert(!curr.empty());
+	assert(!ccurr.empty());
 
 	// App has just started, no last data
-	if (last.empty())
+	if (clast.empty())
 	{
 		auto it = curr_id_idx.cbegin();
 		while (it != curr_id_idx.cend())
@@ -132,6 +132,14 @@ Stats& Stats::accum(const counters_t &counters)
 			double value = (it->name == "power/energy-ram/" || it->name == "power/energy-pkg/") ?
 					0 :
 					it->value;
+
+			assert(it->enabled > 0 && it->enabled <= 1);
+			if (it->enabled < 1)
+			{
+				value /= it->enabled;
+				LOGINF("Counter {} has been scaled ({})"_format(it->name, it->enabled));
+			}
+
 			events.at(it->name)(value);
 			it++;
 		}
@@ -140,7 +148,7 @@ Stats& Stats::accum(const counters_t &counters)
 	// We have data from the last interval
 	else
 	{
-		assert(curr.size() == last.size());
+		assert(ccurr.size() == clast.size());
 		auto curr_it = curr_id_idx.cbegin();
 		auto last_it = last_id_idx.cbegin();
 		while (curr_it != curr_id_idx.cend() && last_it != last_id_idx.cend())
@@ -152,8 +160,17 @@ Stats& Stats::accum(const counters_t &counters)
 			double value = c.snapshot ?
 					c.value :
 					c.value - l.value;
+
 			if (value < 0)
 				LOGERR("Negative interval value ({}) for the counter '{}'"_format(value, c.name));
+
+			assert(c.enabled > 0 && c.enabled <= 1);
+			if (c.enabled < 1)
+			{
+				value /= c.enabled;
+				LOGINF("Counter {} has been scaled ({})"_format(c.name, c.enabled));
+			}
+
 			events.at(c.name)(value);
 
 			curr_it++;
@@ -195,9 +212,9 @@ std::string Stats::data_to_string_total(const std::string &sep) const
 {
 	std::stringstream ss;
 
-	assert(curr.size() > 0);
+	assert(ccurr.size() > 0);
 
-	const auto &curr_id_idx = curr.get<by_id>();
+	const auto &curr_id_idx = ccurr.get<by_id>();
 	auto it = curr_id_idx.cbegin();
 	while (it != curr_id_idx.cend())
 	{
@@ -227,9 +244,9 @@ std::string Stats::data_to_string_int(const std::string &sep) const
 {
 	std::stringstream ss;
 
-	assert(curr.size() > 0);
+	assert(ccurr.size() > 0);
 
-	const auto &curr_id_idx = curr.get<by_id>();
+	const auto &curr_id_idx = ccurr.get<by_id>();
 
 	auto curr_it = curr_id_idx.cbegin();
 	while (curr_it != curr_id_idx.cend())
@@ -237,7 +254,7 @@ std::string Stats::data_to_string_int(const std::string &sep) const
 		ss << acc::last(events.at(curr_it->name));
 		curr_it++;
 
-		if (curr_it != curr.cend())
+		if (curr_it != ccurr.cend())
 			ss << sep;
 	}
 
@@ -252,35 +269,13 @@ std::string Stats::data_to_string_int(const std::string &sep) const
 }
 
 
-double Stats::get_interval(const std::string &name) const
-{
-	const auto &curr_index = curr.get<by_name>();
-	const auto &last_index = last.get<by_name>();
-
-	const auto c = curr_index.find(name);
-	const auto l = last_index.find(name);
-
-
-	if (last.size() != curr.size() && last.size() != 0)
-		throw_with_trace(std::runtime_error("Inconsistency between current data and last interval data"));
-
-	if (c == curr_index.end())
-		throw_with_trace(std::runtime_error("Missing current data"));
-
-	double value = c->snapshot || last.size() == 0 ?
-			c->value :
-			c->value - l->value;
-	return value;
-}
-
-
 double Stats::get_current(const std::string &name) const
 {
-	const auto &curr_index = curr.get<by_name>();
+	const auto &curr_index = ccurr.get<by_name>();
 	auto it = curr_index.find(name);
 	if (it == curr_index.end())
 		throw_with_trace(std::runtime_error("Event not monitorized '{}'"_format(name)));
-	return it->value;
+	return it->value / it->enabled;
 }
 
 
@@ -290,14 +285,14 @@ double Stats::sum(const std::string &name) const
 }
 
 
-const counters_t& Stats::get_current_counters() const
+double Stats::last(const std::string &name) const
 {
-	return curr;
+	return acc::last(events.at(name));
 }
 
 
 void Stats::reset_counters()
 {
-	last = counters_t();
-	curr = counters_t();
+	clast = counters_t();
+	ccurr = counters_t();
 }

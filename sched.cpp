@@ -89,7 +89,7 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 		{
 			if (sched_last.at(task->id))
 			{
-				cycles = task->stats.get_interval("cycles");
+				cycles = task->stats.last("cycles");
 				break;
 			}
 		}
@@ -113,7 +113,7 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 				stall_time.at(task->id)(cycles);
 			// If was scheduled then accumulate the stall cycles
 			else
-				stall_time.at(task->id)(task->stats.get_interval("cycle_activity.stalls_ldm_pending"));
+				stall_time.at(task->id)(task->stats.last("cycle_activity.stalls_ldm_pending"));
 		}
 	}
 

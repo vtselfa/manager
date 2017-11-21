@@ -36,8 +36,8 @@ class Stats
 	uint64_t counter = 0;
 
 	// Last and current counter values that have been passed to the 'accum' method
-	counters_t last;
-	counters_t curr;
+	counters_t clast;
+	counters_t ccurr;
 
 	// Vectors with lambdas that compute derived stats
 	std::vector<
@@ -66,11 +66,12 @@ class Stats
 
 	void reset_counters();
 
-	double get_interval(const std::string &name) const;
 	double get_current(const std::string &name) const;
-	const counters_t& get_current_counters() const;
 
+	// sum of accumulated values
 	double sum(const std::string &name) const;
+	// Last accumulated value into the counter
+	double last(const std::string &name) const;
 
 	std::string header_to_string(const std::string &sep) const;
 	std::string data_to_string_int(const std::string &sep) const;
