@@ -110,7 +110,7 @@ void loop(
 	auto start_glob = std::chrono::system_clock::now();
 
 	tasklist_t runlist = tasklist_t(tasklist); // Tasks that are not done
-	tasklist_t schedlist = sched->apply(runlist); // Tasks that the scheduler schedules to run
+	tasklist_t schedlist = tasklist_t(runlist);
 	for (interval = 0; interval < max_int; interval++)
 	{
 		auto start_int = std::chrono::system_clock::now();
@@ -123,6 +123,9 @@ void loop(
 		sleep_for(chr::microseconds(adj_delay_us));
 		tasks_pause(schedlist); // Status can change from runnable -> exited
 		LOGDEB("Slept for {} us"_format(adj_delay_us));
+
+		// Control elapsed time
+		adjust_time(start_int, start_glob, interval, time_int_us, adj_delay_us);
 
 		// Process tasks...
 		for (const auto &task_ptr : schedlist)
@@ -174,9 +177,6 @@ void loop(
 
 		// Adjust CAT according to the selected policy
 		catpol->apply(interval, schedlist);
-
-		// Control elapsed time
-		adjust_time(start_int, start_glob, interval, time_int_us, adj_delay_us);
 	}
 
 	// Print acumulated stats for non completed tasks and total stats for all the tasks

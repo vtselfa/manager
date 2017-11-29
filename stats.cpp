@@ -165,17 +165,22 @@ Stats& Stats::accum(const counters_t &counters)
 			{
 				// We assume there has been an overflow with the energy, and we try to correct it
 				assert(c.name == "power/energy-ram/" || c.name == "power/energy-pkg/");
-				uint32_t newvalue = (uint32_t) c.value - (uint32_t) l.value;
-				LOGERR("Negative interval value ({}) for the counter '{}', it has been raplaced by {}"_format(value, c.name, newvalue));
+				uint32_t newvalue = (uint32_t) (c.value * 1E6) - (uint32_t) (l.value * 1E6);
+				LOGERR("Negative interval value ({}) for the counter '{}', it has been replaced by {}"_format(value, c.name, newvalue));
 				value = newvalue;
 			}
 
-			assert(c.enabled > 0 && c.enabled <= 1);
-			if (c.enabled < 1)
+			assert(c.enabled >= 0 && c.enabled <= 1);
+
+			if (c.enabled == 0)
+				LOGERR("Counter '{}' was not enabled during this interval"_format(c.name));
+			else if (c.enabled < 1)
 			{
 				value /= c.enabled;
-				LOGINF("Counter {} has been scaled ({})"_format(c.name, c.enabled));
+				LOGDEB("Counter {} has been scaled ({})"_format(c.name, c.enabled));
 			}
+			else
+				LOGDEB("Counter {} has been read without scaling ({})"_format(c.name, c.enabled));
 
 			events.at(c.name)(value);
 

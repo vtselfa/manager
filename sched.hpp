@@ -41,6 +41,8 @@ typedef std::shared_ptr<Base> ptr_t;
 
 class Fair : public Base
 {
+	std::default_random_engine generator;
+
 	// Declare the 'accum_t' typedef
 	#define ACC boost::accumulators
 	typedef ACC::accumulator_set <

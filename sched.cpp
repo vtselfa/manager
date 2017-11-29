@@ -87,7 +87,7 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 	{
 		for (const auto &task : tasklist)
 		{
-			if (sched_last.at(task->id))
+			if (sched_last.at(task->id) && task->stats.last("cycles"))
 			{
 				cycles = task->stats.last("cycles");
 				break;
@@ -152,16 +152,18 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 				table.push_back(task->id);
 		}
 	}
+	LOGDEB(iterable_to_string(table.begin(), table.end(), [](const auto &t) {return "{}"_format(t);}, " "));
 
 	// Decide tasks to run
 	tasklist_t result;
-	std::default_random_engine generator;
 	for (size_t i = 0; i < std::min(max_num_tasks, tasklist.size()); i++)
 	{
 		std::uniform_int_distribution<int> distribution(0, table.size() - 1);
 		uint32_t pos = distribution(generator);
 		uint32_t id = table[pos];
 		const auto &task = tasks_find(tasklist, id);
+
+		LOGDEB("Selected pos {}, {}:{}"_format(pos, id, task->name));
 
 		// Delete from table
 		table.erase(std::remove_if(table.begin(), table.end(), [id](auto v){return v == id;}), table.end());

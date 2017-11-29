@@ -133,8 +133,8 @@ std::vector<counters_t> Perf::read_counters(pid_t pid)
 		// Put energy measurements only in the first group
 		if (first)
 		{
-			counters.insert({i++, epkg, read_energy_pkg(), "uj", false, 1});
-			counters.insert({i++, eram, read_energy_ram(), "uj", false, 1});
+			counters.insert({i++, epkg, read_energy_pkg(), "j", false, 1});
+			counters.insert({i++, eram, read_energy_ram(), "j", false, 1});
 			first = false;
 		}
 		result.push_back(counters);

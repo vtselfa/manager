@@ -383,7 +383,7 @@ size_t KMeans::clusterize(size_t k, const points_t &points, std::vector<Cluster>
 
 	if (total_points < k)
 	{
-		LOGWAR("There are less points ({}) than desired clusters ({}), so each point will go to a different cluster"_format(total_points, k));
+		LOGDEB("There are less points ({}) than desired clusters ({}), so each point will go to a different cluster"_format(total_points, k));
 		k = total_points;
 	}
 
