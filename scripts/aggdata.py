@@ -61,7 +61,13 @@ def process_data(workload, input_dir, output_dir):
 def read_and_merge(files, index):
     dfs = list()
     for f in files:
-        dfs.append(pd.read_table(f, sep=","))
+        df = pd.read_table(f, sep=",")
+        df["progress"] = 120 / df["interval"]
+        df["slowdown"] = df["interval"] / 120
+        df["stp"] = sum(df["progress"])
+        df["antt"] = np.mean(df["slowdown"])
+        df["unfairness"] = df["progress"].std() / df["progress"].mean()
+        dfs.append(df)
     dfs = pd.concat(dfs)
     dfs.set_index(index, inplace=True)
     groups = dfs.groupby(level=list(range(len(index))))
