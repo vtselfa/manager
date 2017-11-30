@@ -165,8 +165,8 @@ Stats& Stats::accum(const counters_t &counters)
 			{
 				// We assume there has been an overflow with the energy, and we try to correct it
 				assert(c.name == "power/energy-ram/" || c.name == "power/energy-pkg/");
-				uint32_t newvalue = (uint32_t) (c.value * 1E6) - (uint32_t) (l.value * 1E6);
-				LOGERR("Negative interval value ({}) for the counter '{}', it has been replaced by {}"_format(value, c.name, newvalue));
+				double newvalue = last(c.name);
+				LOGERR("Negative interval value ({}) for the counter '{}', it has been replaced by {}. Start: {}, end: {}"_format(value, c.name, newvalue, c.value, l.value));
 				value = newvalue;
 			}
 

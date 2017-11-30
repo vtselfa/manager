@@ -51,7 +51,7 @@ class Fair : public Base
 			ACC::tag::sum,
 			ACC::tag::rolling_mean>> accum_t;
 	#undef ACC
-	std::map<uint32_t, accum_t> stall_time;
+	// std::map<uint32_t, accum_t> stall_time;
 	std::map<uint32_t, bool> sched_last;
 
 	void outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower);

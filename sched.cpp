@@ -52,26 +52,26 @@ std::vector<uint32_t> allowed_cpus(pid_t pid)
 
 void Fair::outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower)
 {
-	acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance>> accum;
-
-	for(const auto &task : tasklist)
-	{
-		double value = acc::rolling_mean(stall_time.at(task->id));
-		accum(value);
-	}
-
-	double uth = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
-	double lth = acc::mean(accum) - 2 * std::sqrt(acc::variance(accum));
-	upper.clear();
-	lower.clear();
-	for(const auto &task : tasklist)
-	{
-		double value = acc::rolling_mean(stall_time.at(task->id));
-		if (value > uth)
-			upper.push_back(task);
-		if (value < lth)
-			lower.push_back(task);
-	}
+	// acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance>> accum;
+    //
+	// for(const auto &task : tasklist)
+	// {
+	// 	double value = acc::rolling_mean(stall_time.at(task->id));
+	// 	accum(value);
+	// }
+    //
+	// double uth = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
+	// double lth = acc::mean(accum) - 2 * std::sqrt(acc::variance(accum));
+	// upper.clear();
+	// lower.clear();
+	// for(const auto &task : tasklist)
+	// {
+	// 	double value = acc::rolling_mean(stall_time.at(task->id));
+	// 	if (value > uth)
+	// 		upper.push_back(task);
+	// 	if (value < lth)
+	// 		lower.push_back(task);
+	// }
 }
 
 
@@ -81,41 +81,6 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 
 	size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
-
-	double cycles = 0;
-	if (!sched_last.empty())
-	{
-		for (const auto &task : tasklist)
-		{
-			if (sched_last.at(task->id) && task->stats.last("cycles"))
-			{
-				cycles = task->stats.last("cycles");
-				break;
-			}
-		}
-	}
-	assert(cycles || sched_last.empty());
-
-	for (const auto &task : tasklist)
-	{
-		// First exec of the task
-		if (sched_last.find(task->id) == sched_last.end())
-		{
-			sched_last.emplace(task->id, false);
-			stall_time.emplace(task->id, accum_t(acc::tag::rolling_window::window_size = 5));
-		}
-
-		// Every other exec
-		else
-		{
-			// If was not scheduled, then count the interval cycles as stalled
-			if (!sched_last.at(task->id))
-				stall_time.at(task->id)(cycles);
-			// If was scheduled then accumulate the stall cycles
-			else
-				stall_time.at(task->id)(task->stats.last("cycle_activity.stalls_ldm_pending"));
-		}
-	}
 
 	// Detect outliers
 	tasklist_t upper, lower;
@@ -176,9 +141,9 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 
 	// Store who has been scheduled
 	for (const auto &task : tasklist)
-		sched_last.at(task->id) = false;
+		sched_last[task->id] = false;
 	for (const auto &task : result)
-		sched_last.at(task->id) = true;
+		sched_last[task->id] = true;
 
 	return result;
 }
