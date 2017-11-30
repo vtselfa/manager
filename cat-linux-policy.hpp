@@ -6,8 +6,81 @@
 
 namespace cat
 {
+
+typedef std::tuple<uint32_t, uint64_t> pair;
+
 namespace policy
 {
+
+// No partition policy
+class NoPart: public Base
+{
+    protected:
+    uint64_t every = -1;
+    std::string stats = "total";
+
+    // measure gradient
+    double ipc_total_prev = 0;
+    //vector to store ipc_prev of each task (core)
+    std::vector<pair> ipcPrevCore;
+
+    public:
+    virtual ~NoPart() = default;
+    NoPart(uint64_t _every, std::string _stats) : every(_every), stats(_stats){}
+    virtual void apply(uint64_t, const tasklist_t &) override;
+};
+typedef NoPart NP;
+
+
+class CriticalAlone: public Base {
+    protected:
+
+    uint64_t every = -1;
+    std::string stats = "interval";
+    uint64_t firstInterval = 1;
+
+    //Masks of CLOS
+    uint64_t maskCrCLOS = 0xfffff;
+    uint64_t num_ways_CLOS_2 = 20;
+    uint64_t maskNonCrCLOS = 0xfffff;
+    uint64_t num_ways_CLOS_1 = 20;
+
+    uint64_t num_shared_ways = 0;
+
+    //Control of the changes made in the masks
+    uint64_t state = 0;
+    double ipc_total_prev = 0;
+    double ipc_CR_prev = 0;
+    double ipc_NCR_prev = 0;
+
+    double mpkiL3Mean = 0;
+
+    bool firstTime = true;
+
+    uint64_t IDLE_INTERVALS = 5;
+    uint64_t idle_count = IDLE_INTERVALS;
+    bool idle = false;
+
+    //vector to store if core is assigned to critical CLOS
+    std::vector<pair> coreIsInCRCLOS;
+
+    //vector pair to store the value of the first inteval of the ipnc
+    std::vector<pair> ipncFirstInteval;
+
+    public:
+
+    virtual ~CriticalAlone() = default;
+
+    CriticalAlone(uint64_t _every, std::string _stats, uint64_t _firstInterval) : every(_every), stats(_stats), firstInterval(_firstInterval){}
+
+    //configure CAT
+    void reset_configuration(void);
+
+    // metodo apply
+    virtual void apply(uint64_t, const tasklist_t &) override;
+};
+typedef CriticalAlone CA;
+
 
 
 class ClusteringBase

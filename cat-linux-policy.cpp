@@ -27,6 +27,47 @@ namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
+// No Part Policy
+void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
+{
+    // Apply only when the amount of intervals specified has passed
+    if (current_interval % every != 0)
+        return;
+
+    double ipcTotal = 0;
+    double expected_IPC = 0;
+
+    LOGINF("CAT Policy name: NoPart");
+    LOGINF("Using {} stats"_format(stats));
+
+	for (const auto &task_ptr : tasklist)
+	{
+		const Task &task = *task_ptr;
+		std::string taskName = task.name;
+
+		double ipc = -1;
+
+        assert((stats == "total") | (stats == "interval"));
+
+        if (stats == "total")
+        {
+            // Cycles and IPnC
+            ipc = task.stats.;
+        }
+        else if (stats == "interval")
+        {
+            // Cycles and IPnC
+            ipc = task.stats_interval.ipnc;
+        }
+
+        ipcTotal += ipc;
+        expected_IPC += task.stats_interval.ipnc_prediction;
+
+
+	}
+}
+
+
 // Assign each task to a cluster
 clusters_t ClusteringBase::apply(const tasklist_t &tasklist)
 {
