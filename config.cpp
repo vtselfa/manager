@@ -19,7 +19,20 @@ static std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Nod
 static vector<Cos> config_read_cos(const YAML::Node &config);
 static tasklist_t config_read_tasks(const YAML::Node &config);
 static YAML::Node merge(YAML::Node user, YAML::Node def);
+static void config_check_required_fields(const YAML::Node &node, const std::vector<string> &required);
 static void config_check_fields(const YAML::Node &node, const std::vector<string> &required, std::vector<string> allowed);
+
+
+static
+void config_check_required_fields(const YAML::Node &node, const std::vector<string> &required)
+{
+	assert(node.IsMap());
+
+	// Check that required fields exist
+	for (string field : required)
+		if (!node[field])
+			throw_with_trace(std::runtime_error("The node '{}' requires the field '{}'"_format(node.Scalar(), field)));
+}
 
 
 static
@@ -30,10 +43,7 @@ void config_check_fields(const YAML::Node &node, const std::vector<string> &requ
 
 	assert(node.IsMap());
 
-	// Check that required fields exist
-	for (string field : required)
-		if (!node[field])
-			throw_with_trace(std::runtime_error("The node '{}' requires the field '{}'"_format(node.Scalar(), field)));
+	config_check_required_fields(node, required);
 
 	// Check that all the fields present are allowed
 	for (const auto &n : node)
@@ -350,21 +360,39 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 
 	required = {"kind"};
 	allowed  = {"allowed_cpus"};
-	config_check_fields(sched, required, allowed);
+
+	// Check minimum required fields
+	config_check_required_fields(sched, required);
 
 	string kind                   = sched["kind"].as<string>();
 	vector<uint32_t> allowed_cpus = sched["allowed_cpus"] ?
 			sched["allowed_cpus"].as<decltype(allowed_cpus)>() :
-			decltype(allowed_cpus)(); // Empty vector
+			sched::allowed_cpus(); // All the allowed cpus for this process according to Linux
 
 	if (kind == "linux")
+	{
+		config_check_fields(sched, required, allowed);
 		return std::make_shared<sched::Base>(allowed_cpus);
+	}
 
 	if (kind == "random")
+	{
+		config_check_fields(sched, required, allowed);
 		return std::make_shared<sched::Random>(allowed_cpus);
+	}
 
 	if (kind == "fair")
-		return std::make_shared<sched::Fair>(allowed_cpus);
+	{
+		required.push_back("event");
+		required.push_back("weights");
+		allowed.push_back("at_least_one");
+		config_check_fields(sched, required, allowed);
+
+		string event = sched["event"].as<string>();
+		std::vector<uint32_t> weights = sched["weights"].as<decltype(weights)>();
+		bool at_least_one = sched["at_least_one"].as<bool>();
+		return std::make_shared<sched::Fair>(allowed_cpus, event, weights, at_least_one);
+	}
 
 	throw_with_trace(std::runtime_error("Invalid sched kind '{}'"_format(kind)));
 }

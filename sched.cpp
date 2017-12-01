@@ -50,45 +50,15 @@ std::vector<uint32_t> allowed_cpus(pid_t pid)
 }
 
 
-void Fair::outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower)
-{
-	// acc::accumulator_set<double, acc::stats<acc::tag::mean, acc::tag::variance>> accum;
-    //
-	// for(const auto &task : tasklist)
-	// {
-	// 	double value = acc::rolling_mean(stall_time.at(task->id));
-	// 	accum(value);
-	// }
-    //
-	// double uth = acc::mean(accum) + 2 * std::sqrt(acc::variance(accum));
-	// double lth = acc::mean(accum) - 2 * std::sqrt(acc::variance(accum));
-	// upper.clear();
-	// lower.clear();
-	// for(const auto &task : tasklist)
-	// {
-	// 	double value = acc::rolling_mean(stall_time.at(task->id));
-	// 	if (value > uth)
-	// 		upper.push_back(task);
-	// 	if (value < lth)
-	// 		lower.push_back(task);
-	// }
-}
-
-
 tasklist_t Fair::apply(const tasklist_t &tasklist)
 {
 	LOGDEB("Fair scheduling");
 
+	tasklist_t result;
 	size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
 
-	// Detect outliers
-	tasklist_t upper, lower;
-	outliers(tasklist, upper, lower);
-	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
-	LOGDEB(iterable_to_string(upper.begin(), upper.end(), [](const auto &t) {return "{}:{}"_format(t->id, t->name);}, " "));
-
-	auto clustering = cat::policy::Cluster_KMeans(4, cat_read_info()["L3"].num_closids, str_to_evalclusters("dunn"), "cycle_activity.stalls_ldm_pending", false);
+	auto clustering = cat::policy::Cluster_KMeans(weights.size(), cat_read_info()["L3"].num_closids, str_to_evalclusters("dunn"), event, false); // Last bool is sort_ascending
 	auto clusters = clustering.apply(tasklist);
 
 	for (size_t i = 0; i < clusters.size(); i++)
@@ -106,21 +76,40 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 		LOGDEB(fmt::format("{{Cluster {}: {{tasks: [{}]}}}}", i, task_ids));
 	}
 
+	// Force at least one task from each cluster
+	std::map<uint32_t, bool> selected;
+	if (at_least_one)
+	{
+		LOGDEB("Force at least one task per cluster");
+		for (size_t i = 0; i < clusters.size(); i++)
+		{
+			const auto &points = clusters[i].getPoints();
+			std::uniform_int_distribution<int> distribution(0, points.size() - 1);
+			uint32_t pos = distribution(generator);
+			auto it = points.begin();
+			std::advance(it, pos);
+			const auto &task = tasks_find(tasklist, (*it)->id);
+			result.push_back(task);
+			selected[(*it)->id] = true;
+			max_num_tasks--;
+			LOGDEB("Forced task number {} from cluster {}: {}:{}"_format(pos, i, task->id, task->name));
+		}
+	}
+
 	std::vector<uint32_t> table;
-	auto weights = std::vector<int>{1, 2, 4, 8};
 	for (size_t i = 0; i < clusters.size(); i++)
 	{
 		for (const auto &point : clusters[i].getPoints())
 		{
+			if (selected[point->id]) continue; // It has already been selected
 			const auto &task = tasks_find(tasklist, point->id);
-			for (int j = 0; j < weights[i]; j++)
+			for (size_t j = 0; j < weights[i]; j++)
 				table.push_back(task->id);
 		}
 	}
 	LOGDEB(iterable_to_string(table.begin(), table.end(), [](const auto &t) {return "{}"_format(t);}, " "));
 
 	// Decide tasks to run
-	tasklist_t result;
 	for (size_t i = 0; i < std::min(max_num_tasks, tasklist.size()); i++)
 	{
 		std::uniform_int_distribution<int> distribution(0, table.size() - 1);

@@ -43,23 +43,16 @@ class Fair : public Base
 {
 	std::default_random_engine generator;
 
-	// Declare the 'accum_t' typedef
-	#define ACC boost::accumulators
-	typedef ACC::accumulator_set <
-		double,
-		ACC::stats <
-			ACC::tag::sum,
-			ACC::tag::rolling_mean>> accum_t;
-	#undef ACC
-	// std::map<uint32_t, accum_t> stall_time;
+	std::string event;
+	std::vector<uint32_t> weights;
+	bool at_least_one;
 	std::map<uint32_t, bool> sched_last;
-
-	void outliers(const tasklist_t &tasklist, tasklist_t &upper, tasklist_t &lower);
 
 	public:
 
-	Fair() = default;
-	Fair(const std::vector<uint32_t> &_cpus) : Base(_cpus) {};
+	Fair() = delete;
+	Fair(const std::vector<uint32_t> &_cpus, const std::string &_event, const std::vector<uint32_t> &_weights, bool _at_least_one) :
+			Base(_cpus), event(_event), weights(_weights), at_least_one(_at_least_one) {};
 	~Fair() = default;
 
 	virtual tasklist_t apply(const tasklist_t &tasklist) override;
