@@ -73,7 +73,7 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
             df = pd.DataFrame(df.sum()).T
         elif agg == "max":
             df = pd.DataFrame(df.max()).T
-        else
+        else:
             assert(1==2)
 
         dfs_metric.append(df)
