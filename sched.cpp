@@ -55,7 +55,7 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 	LOGDEB("Fair scheduling");
 
 	tasklist_t result;
-	size_t max_num_tasks = cpus.size();
+	const size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
 
 	auto clustering = cat::policy::Cluster_KMeans(weights.size(), cat_read_info()["L3"].num_closids, str_to_evalclusters("dunn"), event, false); // Last bool is sort_ascending
@@ -78,6 +78,7 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 
 	// Force at least one task from each cluster
 	std::map<uint32_t, bool> selected;
+	int num_selected_tasks = 0;
 	if (at_least_one)
 	{
 		LOGDEB("Force at least one task per cluster");
@@ -91,8 +92,8 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 			const auto &task = tasks_find(tasklist, (*it)->id);
 			result.push_back(task);
 			selected[(*it)->id] = true;
-			max_num_tasks--;
-			LOGDEB("Forced task number {} from cluster {}: {}:{}"_format(pos, i, task->id, task->name));
+			num_selected_tasks++;
+			LOGDEB("Forced task number {} from cluster {} with {} points: {}:{}"_format(pos, i, points.size(), task->id, task->name));
 		}
 	}
 
@@ -110,8 +111,9 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 	LOGDEB(iterable_to_string(table.begin(), table.end(), [](const auto &t) {return "{}"_format(t);}, " "));
 
 	// Decide tasks to run
-	for (size_t i = 0; i < std::min(max_num_tasks, tasklist.size()); i++)
+	for (size_t i = num_selected_tasks; i < std::min(max_num_tasks, tasklist.size()); i++)
 	{
+		assert(!table.empty());
 		std::uniform_int_distribution<int> distribution(0, table.size() - 1);
 		uint32_t pos = distribution(generator);
 		uint32_t id = table[pos];

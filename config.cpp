@@ -390,7 +390,7 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 
 		string event = sched["event"].as<string>();
 		std::vector<uint32_t> weights = sched["weights"].as<decltype(weights)>();
-		bool at_least_one = sched["at_least_one"].as<bool>();
+		bool at_least_one = sched["at_least_one"] ? sched["at_least_one"].as<bool>() : false;
 		return std::make_shared<sched::Fair>(allowed_cpus, event, weights, at_least_one);
 	}
 
