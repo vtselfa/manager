@@ -35,7 +35,6 @@ void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
         return;
 
     double ipcTotal = 0;
-    double expected_IPC = 0;
 
     LOGINF("CAT Policy name: NoPart");
     LOGINF("Using {} stats"_format(stats));
@@ -45,27 +44,663 @@ void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
 		const Task &task = *task_ptr;
 		std::string taskName = task.name;
 
-		double ipc = -1;
+		double inst = 0, cycl = 0, ipc = -1;
 
         assert((stats == "total") | (stats == "interval"));
 
         if (stats == "total")
         {
             // Cycles and IPnC
-            ipc = task.stats.;
+            inst = task.stats.sum("instructions");
+			cycl = task.stats.sum("cycles");
+
         }
         else if (stats == "interval")
         {
             // Cycles and IPnC
-            ipc = task.stats_interval.ipnc;
+            inst = task.stats.last("instructions");
+			cycl = task.stats.last("cycles");
         }
 
+		ipc = inst / cycl;
         ipcTotal += ipc;
-        expected_IPC += task.stats_interval.ipnc_prediction;
-
-
 	}
+	LOGINF("expected IPC total of this interval = {}"_format(expected_IPC));
+    LOGINF("real ipcTotal of this interval = {}"_format(ipcTotal));
+
+	// We assume 4% error
+    double max = expected_IPC * 1.04;
+    double min = expected_IPC * 0.96;
+	LOGINF("min {}, max {}"_format(min,max));
+
+    if(ipcTotal <= max && ipcTotal >= min)
+    {
+        LOGINF("Prediction is GOOD");
+    }
+    else
+    {
+        LOGINF("Prediction is BAD");
+    }
+
+    double rel_error = ((double) expected_IPC - (double) ipcTotal) / (double) ipcTotal;
+    LOGINF("Pred rel error {}"_format(rel_error));
+
+	// Assign total IPC of this interval to previos value
+	expected_IPC = ipcTotal;
 }
+
+
+// Auxiliar method of Critical Alone policy to reset configuration
+void CriticalAlone::reset_configuration(const tasklist_t &tasklist)
+{
+    //assign all tasks to CLOS 1
+	for (const auto &task_ptr : tasklist)
+    {
+		const Task &task = *task_ptr;
+        pid_t taskPID = task.pid;
+		get_cat()->add_task(1,taskPID);
+	}
+
+    //change masks of CLOS to 0xfffff
+    get_cat()->set_cbm(1,0xfffff);
+    get_cat()->set_cbm(2,0xfffff);
+
+    firstTime = 1;
+    state = 0;
+    expectedIPCtotal = 0;
+
+    maskCrCLOS = 0xfffff;
+    maskNonCrCLOS = 0xfffff;
+
+    num_ways_CLOS_2 = 20;
+    num_ways_CLOS_1 = 20;
+
+    num_shared_ways = 0;
+
+    idle = false;
+    idle_count = IDLE_INTERVALS;
+
+    LOGINF("Reset performed. Original configuration restored");
+}
+
+void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
+{
+    LOGINF("Current_interval = {}"_format(current_interval));
+    // Apply only when the amount of intervals specified has passed
+    if (current_interval % every != 0)
+        return;
+
+    // Define accumulators
+    acc::accumulator_set <uint32_t, acc::stats<acc::tag::rolling_mean>> macc(acc::tag::rolling_window::window_size = 10u);
+    acc::accumulator_set<double, acc::stats<acc::tag::variance>> accum;
+
+    // (Core, MPKI-L3) tuple
+    auto v = std::vector<pair_t>();
+    auto v_ipc = std::vector<pair_t>();
+    auto outlier = std::vector<pair_t>();
+
+    double ipcTotal = 0;
+    double ipc_CR = 0;
+    double ipc_NCR = 0;
+    double mpkiL3Total = 0;
+
+    uint64_t newMaskNonCr, newMaskCr;
+
+    // Number of critical apps found in the interval
+    uint32_t critical_apps = 0;
+    bool change_in_outliers = false;
+
+    LOGINF("CAT Policy name: Critical Alone");
+
+	// Gather data
+	for (const auto &task_ptr : tasklist)
+    {
+    	const Task &task = *task_ptr;
+        std::string taskName = task.name;
+		pid_t taskPID = task.pid;
+
+		// stats per interval
+		uint64_t l3_miss = task.stats.last("mem_load_uops_retired.l3_miss");
+		uint64_t inst = task.stats.last("instructions");
+
+		double ipc = task.stats.last("ipc");
+
+		// calculate MPKI-L3 of task
+        double kInst = inst / 1000;
+        double MPKIL3 = l3_miss / kInst;
+
+        //LOGINF("Task {} has {} MPKI in L3"_format(taskName,MPKIL3));
+        v.push_back(std::make_pair(taskPID, MPKIL3));
+        v_ipc.push_back(std::make_pair(taskPID, ipc));
+
+        ipcTotal += ipc;
+        mpkiL3Total += MPKIL3;
+	}
+
+	LOGINF("Total IPC of interval {} = {:.2f}"_format(current_interval, ipcTotal));
+
+    // calculate rolling mean of mean interval
+    double meanMPKIL3Total = mpkiL3Total / tasklist.size();
+    macc(meanMPKIL3Total);
+    mpkiL3Mean = acc::rolling_mean(macc);
+    LOGINF("Rolling mean of MPKI-L3 at interval {} = {:.2f}"_format(current_interval, mpkiL3Mean));
+
+    // PROCESS DATA
+    if (current_interval >= firstInterval)
+    {
+        //calculate std and limit
+        accum(mpkiL3Mean);
+        double stdMPKIL3mean = std::sqrt(acc::variance(accum));
+        double limit_outlier = mpkiL3Mean + 2*stdMPKIL3mean;
+
+		pid_t pidTask;
+		//Check if MPKI-L3 of each APP is 2 stds o more higher than the mean MPKI-L3
+        for (const auto &item : v)
+        {
+            double MPKIL3Task = std::get<1>(item);
+            pidTask = std::get<0>(item);
+
+            if (MPKIL3Task >= limit_outlier)
+            {
+                LOGINF("The MPKI-L3 of task with pid {} is an outlier, since it is higher than {}"_format(pidTask,limit_outlier));
+                outlier.push_back(std::make_pair(pidTask,1));
+                critical_apps = critical_apps + 1;
+            }
+            else
+            {
+                outlier.push_back(std::make_pair(pidTask,0));
+            }
+        }
+
+		LOGINF("critical_apps = {}"_format(critical_apps));
+
+        //check CLOS are configured to the correct mask
+        if (firstTime)
+        {
+            // set ways of CLOS 1 and 2
+            switch ( critical_apps )
+            {
+                case 1:
+                    // 1 critical app = 12cr10others
+                    maskCrCLOS = 0xfff00;
+                    num_ways_CLOS_2 = 12;
+                    maskNonCrCLOS = 0x003ff;
+                    num_ways_CLOS_1 = 10;
+                    state = 10;
+                    break;
+                case 2:
+                    // 2 critical apps = 13cr9others
+                    maskCrCLOS = 0xfff80;
+                    num_ways_CLOS_2 = 13;
+                    maskNonCrCLOS = 0x001ff;
+                    num_ways_CLOS_1 = 9;
+                    state = 20;
+                    break;
+                case 3:
+                    // 3 critical apps = 14cr8others
+                    maskCrCLOS = 0xfffc0;
+                    num_ways_CLOS_2 = 14;
+                    maskNonCrCLOS = 0x000ff;
+                    num_ways_CLOS_1 = 8;
+                    state = 30;
+                    break;
+                default:
+                     // no critical apps or more than 3 = 20cr20others
+                     maskCrCLOS = 0xfffff;
+                     num_ways_CLOS_2 = 20;
+                     maskNonCrCLOS = 0xfffff;
+                     num_ways_CLOS_1 = 20;
+                     state = 40;
+                     break;
+            } // close switch
+
+            num_shared_ways = 2;
+            get_cat()->set_cbm(1,maskNonCrCLOS);
+            get_cat()->set_cbm(2,maskCrCLOS);
+
+            LOGINF("COS 2 (CR) now has mask {:#x}"_format(maskCrCLOS));
+            LOGINF("COS 1 (non-CR) now has mask {:#x}"_format(maskNonCrCLOS));
+
+
+            firstTime = 0;
+			uint32_t index = 0;
+			//assign each core to its corresponding CLOS
+            for (const auto &item : outlier)
+            {
+            	pidTask = std::get<0>(item);
+                uint32_t outlierValue = std::get<1>(item);
+                double ipcTask = std::get<1>(v_ipc[index]);
+				index = index + 1;
+
+                if(outlierValue)
+                {
+                    get_cat()->add_task(2,pidTask);
+                    taskIsInCRCLOS.push_back(std::make_pair(pidTask,2));
+                    LOGINF("Task PID {} assigned to CLOS 2"_format(pidTask));
+                    ipc_CR += ipcTask;
+                }
+                else
+                {
+                    get_cat()->add_task(1,pidTask);
+                    taskIsInCRCLOS.push_back(std::make_pair(pidTask,1));
+                    LOGINF("Task PID {} assigned to CLOS 1"_format(pidTask));
+                    ipc_NCR += ipcTask;
+                }
+            }
+	}
+	else
+	{
+		//check if there is a new critical app
+            for (uint32_t i = 0; i < 8; i++)
+            {
+                uint32_t outlierValue = std::get<1>(outlier[i]);
+                uint32_t CLOSvalue = std::get<1>(taskIsInCRCLOS[i]);
+                double ipcTask = std::get<1>(v_ipc[i]);
+
+                if(outlierValue && (CLOSvalue == 1))
+                {
+                    LOGINF("There is a new critical app (outlier {}, current CLOS {})"_format(outlierValue,CLOSvalue));
+                    change_in_outliers = true;
+                }
+                else if(!outlierValue && (CLOSvalue == 2))
+                {
+                    LOGINF("There is a critical app that is no longer critical)");
+                    change_in_outliers = true;
+                }
+                else if(outlierValue)
+                {
+                    ipc_CR += ipcTask;
+                }
+                else
+                {
+                    ipc_NCR += ipcTask;
+                }
+            }
+
+			//reset configuration if there is a change in critical apps
+            if(change_in_outliers)
+            {
+                taskIsInCRCLOS.clear();
+                reset_configuration(tasklist);
+
+            }
+            else if(idle)
+            {
+                LOGINF("Idle interval {}"_format(idle_count));
+                idle_count = idle_count - 1;
+                if(idle_count == 0)
+                {
+                    idle = false;
+                    idle_count = IDLE_INTERVALS;
+                }
+
+            }
+			else if(!idle)
+            {
+                // if there is no new critical app, modify mask if not done previously
+                if(critical_apps>0 && critical_apps<4)
+                {
+
+                    //LOGINF("Current state = {}"_format(state));
+
+                    LOGINF("IPC total = {}"_format(ipcTotal));
+                    LOGINF("Expected IPC total = {}"_format(expectedIPCtotal));
+
+                    double UP_limit_IPC = expectedIPCtotal * 1.04;
+                    double LOW_limit_IPC = expectedIPCtotal  * 0.96;
+
+                    double NCR_limit_IPC = ipc_NCR_prev*0.96;
+                    double CR_limit_IPC = ipc_CR_prev*0.96;
+
+                    if(ipcTotal > UP_limit_IPC)
+                    {
+                        LOGINF("New IPC is BETTER: IPCtotal {} > {}"_format(ipcTotal,UP_limit_IPC));
+                    }
+                    else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                    {
+                        LOGINF("WORSE CR IPC: CR {} < {} && NCR {} >= {}"_format(ipc_CR,CR_limit_IPC,ipc_NCR,NCR_limit_IPC));
+                    }
+                    else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                    {
+                        LOGINF("WORSE NCR IPC: NCR {} < {} && CR {} >= {}"_format(ipc_NCR,NCR_limit_IPC,ipc_CR,CR_limit_IPC));
+                    }
+                    else if( (ipc_CR < CR_limit_IPC) && (ipc_NCR < NCR_limit_IPC))
+                    {
+                        LOGINF("BOTH IPCs are WORSE: CR {} < {} && NCR {} < {}"_format(ipc_CR,CR_limit_IPC,ipc_NCR,NCR_limit_IPC));
+                    }
+                    else
+                    {
+                        LOGINF("BOTH IPCs are EQUAL (NOT WORSE)");
+                    }
+
+					//transitions switch-case
+                    switch (state)
+                    {
+                        case 10:
+                            if(ipcTotal > UP_limit_IPC)
+                            {
+                                // IPC better
+                                idle = true;
+                            }
+                            else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                            {
+                                // no change in IPC
+                                idle = true;
+                            }
+                            else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                            {
+                                // worse NCR IPC
+                                state = 2;
+                            }
+                            else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                            {
+                                // worse CR IPC
+                                state = 1;
+                            }
+                            else
+                            {
+                                // both IPC are worse
+                                state = 1;
+                            }
+                            break;
+
+						case 20:
+                              if(ipcTotal > UP_limit_IPC)
+                              {
+                                  // IPC better
+                                  idle = true;
+                              }
+                              else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                              {
+                                  // no change in IPC
+                                  idle = true;
+                              }
+                              else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                              {
+                                  // worse NCR IPC
+                                  state = 2;
+                              }
+                              else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                              {
+                                  // worse CR IPC
+                                  state = 1;
+                              }
+                              else
+                              {
+                                  // both IPC are worse
+                                  state = 1;
+                              }
+                              break;
+
+                        case 30:
+                              if(ipcTotal > UP_limit_IPC)
+                              {
+                                  // IPC better
+                                  idle = true;
+                              }
+                              else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                              {
+                                  // no change in IPC
+                                  idle = true;
+                              }
+                              else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                              {
+                                  // worse NCR IPC
+                                  state = 2;
+                              }
+                              else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                              {
+                                  // worse CR IPC
+                                  state = 1;
+                              }
+                              else
+                              {
+                                  // both IPC are worse
+                                  state = 1;
+                              }
+                              break;
+
+						case 1:
+                            if(ipcTotal > UP_limit_IPC)
+                            {
+                                // improvement in IPC
+                                idle = true;
+                            }
+                            else if( (ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                            {
+                                // no change in IPC
+                                idle = true;
+                            }
+                            else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                            {
+                                // worse NCR IPC
+                                state = 3;
+                            }
+                            else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                            {
+                                // worse CR IPC
+                                state = 4;
+                            }
+                            else
+                            {
+                                // both IPC are worse
+                                state = 4;
+                            }
+
+                            break;
+
+                        case 2:
+                            if(ipcTotal > UP_limit_IPC)
+                            {
+                                // IPC better
+                                idle = true;
+                            }
+                            else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                            {
+                                // IPC equal
+                                idle = true;
+                            }
+                            else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                            {
+                                // NCR worse
+                                state = 3;
+                            }
+                            else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                            {
+                                // CR worse
+                                state = 4;
+                            }
+                            else
+                            {
+                                // NCR and CR worse
+                                state = 4;
+                            }
+                            break;
+
+						case 3:
+                            if(ipcTotal > UP_limit_IPC)
+                            {
+                                // IPC better
+                                idle = true;
+                            }
+                            else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                            {
+                                // IPC equal
+                                idle = true;
+                            }
+                            else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                            {
+                                // NCR worse
+                                state = 2;
+                            }
+                            else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                            {
+                                // CR worse
+                                state = 1;
+                            }
+                            else
+                            {
+                                // both WORSE
+                                state = 1;
+                            }
+                            break;
+
+                        case 4:
+                            if(ipcTotal > UP_limit_IPC)
+                            {
+                                // IPC better
+                                idle = true;
+                            }
+                            else if((ipcTotal <= UP_limit_IPC) && (ipcTotal >= LOW_limit_IPC))
+                            {
+                                // IPC equal
+                                idle = true;
+                            }
+                            else if((ipc_NCR < NCR_limit_IPC) && (ipc_CR >= CR_limit_IPC))
+                            {
+                                // NCR worse
+                                state = 2;
+                            }
+                            else if((ipc_CR < CR_limit_IPC) && (ipc_NCR >= NCR_limit_IPC))
+                            {
+                                // CR worse
+                                state = 1;
+                            }
+                            else
+                            {
+                                // both WORSE
+                                state = 1;
+                            }
+                            break;
+					}
+
+					//states switch-case
+                    //LOGINF("New state after transition = {}"_format(state));
+                    switch ( state )
+                    {
+                        case 10:
+                            if(idle)
+                            {
+                                LOGINF("New IPC is better or equal-> {} idle intervals"_format(IDLE_INTERVALS));
+                            }
+                            else
+                            {
+                                LOGINF("No action performed");
+                            }
+                            break;
+
+                        case 20:
+                              if(idle)
+                              {
+                                  LOGINF("New IPC is better or equal-> {} idle intervals"_format(IDLE_INTERVALS));
+                              }
+                              else
+                              {
+                                  LOGINF("No action performed");
+                              }
+                              break;
+
+                        case 30:
+                                if(idle)
+                                {
+                                    LOGINF("New IPC is better or equal-> {} idle intervals"_format(IDLE_INTERVALS));
+                                }
+                                else
+                                {
+                                    LOGINF("No action performed");
+                                }
+                                break;
+
+                        case 1:
+                            if(idle)
+                            {
+                                LOGINF("New IPC is better or equal -> {} idle intervals"_format(IDLE_INTERVALS));
+                            }
+							else
+                            {
+                                LOGINF("NCR-- (Remove one shared way from CLOS with non-critical apps)");
+                                newMaskNonCr = (maskNonCrCLOS >> 1) | 0x00001;
+                                maskNonCrCLOS = newMaskNonCr;
+                                get_cat()->set_cbm(1,maskNonCrCLOS);
+                            }
+                            break;
+
+                        case 2:
+                            if(idle)
+                            {
+                                LOGINF("New IPC is better or equal -> {} idle intervals"_format(IDLE_INTERVALS));
+                            }
+                            else
+                            {
+                                LOGINF("CR-- (Remove one shared way from CLOS with critical apps)");
+                                newMaskCr = (maskCrCLOS << 1) & 0xfffff;
+                                maskCrCLOS = newMaskCr;
+                                get_cat()->set_cbm(2,maskCrCLOS);
+                            }
+                            break;
+
+                        case 3:
+                            if(idle)
+                            {
+                                LOGINF("New IPC is better or equal -> {} idle intervals"_format(IDLE_INTERVALS));
+                            }
+                            else
+                            {
+                                LOGINF("NCR++ (Add one shared way to CLOS with non-critical apps)");
+                                newMaskNonCr = (maskNonCrCLOS << 1) | 0x00001;
+                                maskNonCrCLOS = newMaskNonCr;
+                                get_cat()->set_cbm(1,maskNonCrCLOS);
+                            }
+                            break;
+
+                        case 4:
+                            if(idle)
+                            {
+                                LOGINF("New IPC is better or equal -> {} idle intervals"_format(IDLE_INTERVALS));
+                            }
+                            else
+                            {
+                                LOGINF("CR++ (Add one shared way to CLOS with critical apps)");
+                                newMaskCr = (maskCrCLOS >> 1) | 0x80000;
+                                maskCrCLOS = newMaskCr;
+                                get_cat()->set_cbm(2,maskCrCLOS);
+                            }
+                            break;
+
+						default:
+                            break;
+
+                    } //SWITCH
+
+                    num_ways_CLOS_1 = __builtin_popcount(get_cat()->get_cbm(1));
+                    num_ways_CLOS_2 = __builtin_popcount(get_cat()->get_cbm(2));
+
+					LOGINF("COS 2 (CR)     has mask {:#x} ({} ways)"_format(get_cat()->get_cbm(2),num_ways_CLOS_2));
+                    LOGINF("COS 1 (non-CR) has mask {:#x} ({} ways)"_format(get_cat()->get_cbm(1),num_ways_CLOS_1));
+
+                    num_shared_ways = (num_ways_CLOS_2 + num_ways_CLOS_1) - 20;
+                    LOGINF("Number of shared ways: {}"_format(num_shared_ways));
+                    assert(num_shared_ways >= 0);
+
+                } //if(critical>0 && critical<4)
+
+            } //else if(!idle)
+        }//else no es firstime
+        LOGINF("Current state = {}"_format(state));
+    }//if (current_interval >= firstInterval)
+
+    //calculate new gradient
+
+    ipc_CR_prev = ipc_CR;
+    ipc_NCR_prev = ipc_NCR;
+
+	// Assign total IPC of this interval to previos value
+    expectedIPCtotal = ipcTotal;
+
+
+}//apply
+
+
 
 
 // Assign each task to a cluster
