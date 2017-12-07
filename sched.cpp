@@ -85,6 +85,11 @@ tasklist_t Fair::apply(const tasklist_t &tasklist)
 		for (size_t i = 0; i < clusters.size(); i++)
 		{
 			const auto &points = clusters[i].getPoints();
+			if (points.empty())
+			{
+				LOGWAR("Cluster {} is empty"_format(i));
+				continue;
+			}
 			std::uniform_int_distribution<int> distribution(0, points.size() - 1);
 			uint32_t pos = distribution(generator);
 			auto it = points.begin();
