@@ -67,7 +67,40 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 	if (kind == "none")
 		return std::make_shared<cat::policy::Base>();
 
-	if (kind == "sfcoa")
+	if (kind == "ca")
+	{
+		LOGINF("Using CriticalAlone (ca) CAT policy");
+
+		// Check that required fields exist
+		for (string field : {"every", "firstInterval"})
+		{
+			if (!policy[field])
+				throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
+		}
+		// Read fields
+		uint64_t every = policy["every"].as<uint64_t>();
+		uint64_t firstInterval = policy["firstInterval"].as<uint64_t>();
+
+		return std::make_shared<cat::policy::CriticalAlone>(every, firstInterval);
+	}
+	else if (kind == "np")
+	{
+		LOGINF("Using NoPart (np) CAT policy");
+
+		// Check that required fields exist
+		for (string field : {"every", "stats"})
+		{
+	       	if (!policy[field])
+	           	throw_with_trace(std::runtime_error("The '" + kind + "' CAT policy needs the '" + field + "' field"));
+		}
+	    // Read fields
+        uint64_t every = policy["every"].as<uint64_t>();
+		std::string stats = policy["stats"].as<std::string>();
+
+		return std::make_shared<cat::policy::NoPart>(every, stats);
+
+	}
+	else if (kind == "sfcoa")
 	{
 		vector<string> required = {"kind", "every", "model"};
 		vector<string> allowed  = {"num_clusters", "alternate_sides", "min_stall_ratio", "detect_outliers", "eval_clusters", "cluster_sizes", "min_max"};
