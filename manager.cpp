@@ -3,6 +3,7 @@
 #include <iostream>
 #include <thread>
 
+#include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 #include <boost/stacktrace.hpp>
 #include <fmt/format.h>
@@ -19,8 +20,9 @@
 #include "task.hpp"
 
 
-namespace po = boost::program_options;
 namespace chr = std::chrono;
+namespace fs = boost::filesystem;
+namespace po = boost::program_options;
 
 using std::string;
 using std::to_string;
@@ -227,8 +229,11 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 	try
 	{
 		for (const auto &task : tasklist)
+		{
 			if (task->get_status() != Task::Status::done)
 				task_kill(*task);
+			fs::remove_all(task->rundir);
+		}
 	}
 	catch(const std::exception &e)
 	{
