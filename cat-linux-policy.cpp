@@ -111,6 +111,8 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 		try
 		{
 			metric = acc::rolling_mean(task.stats.events.at(event));
+			if (metric == 0)
+				throw_with_trace(ClusteringBase::CouldNotCluster("The event '{}' value is 0 for task {}:{}"_format(event, task.id, task.name)));
 		}
 		catch (const std::exception &e)
 		{
@@ -229,6 +231,29 @@ void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &cl
 		}
 		LOGDEB(fmt::format("{{COS{}: {{mask: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", i, ways[i], __builtin_popcount(ways[i]), task_ids));
 	}
+}
+
+
+void ClusterAndDistribute::apply(uint64_t current_interval, const tasklist_t &tasklist)
+{
+	// Apply the policy only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+		return;
+
+	clusters_t clusters;
+	try
+	{
+		clusters = clustering->apply(tasklist);
+	}
+	catch (const ClusteringBase::CouldNotCluster &e)
+	{
+		LOGWAR("{}: Not doing any partitioning this interval"_format(e.what()));
+		return;
+	}
+	auto ways = distributing->apply(tasklist, clusters);
+	show(tasklist, clusters, ways);
+	tasks_to_closes(tasklist, clusters);
+	ways_to_closes(ways);
 }
 
 }} // cat::policy

@@ -14,10 +14,17 @@ class ClusteringBase
 {
 	public:
 
+	class CouldNotCluster : public std::runtime_error
+	{
+		public:
+		CouldNotCluster(const std::string &msg) : std::runtime_error(msg) {};
+	};
+
 	ClusteringBase() = default;
 	virtual ~ClusteringBase() = default;
 
 	virtual clusters_t apply(const tasklist_t &tasklist);
+
 };
 typedef std::shared_ptr<ClusteringBase> ClusteringBase_ptr_t;
 
@@ -175,18 +182,7 @@ class ClusterAndDistribute: public Base
 
 	}
 
-
-	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist)
-	{
-		// Apply the policy only when the amount of intervals specified has passed
-		if (current_interval % every != 0)
-			return;
-		auto clusters = clustering->apply(tasklist);
-		auto ways = distributing->apply(tasklist, clusters);
-		show(tasklist, clusters, ways);
-		tasks_to_closes(tasklist, clusters);
-		ways_to_closes(ways);
-	}
+	virtual void apply(uint64_t current_interval, const tasklist_t &tasklist);
 
 	void show(const tasklist_t &tasklist, const clusters_t &clusters, const ways_t &ways);
 };
