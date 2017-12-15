@@ -11,11 +11,16 @@ def main():
     parser = argparse.ArgumentParser(description = 'Aggregates stats for different runs of the same workload.')
     parser.add_argument('-w', '--workloads', required=True, help='YAML file with the workloads to process.')
     parser.add_argument('-i', '--input-dir', required=True, help='Input data dir.')
+    parser.add_argument('-n', '--name', required=True, help='Exec name.')
     parser.add_argument('-o', '--output-dir', default='aggrdata', help='Output dir.')
     args = parser.parse_args()
 
     # Create output dir
     os.makedirs(osp.abspath(args.output_dir), exist_ok=True)
+
+    # Store name
+    with open(args.output_dir + "/name", 'w') as f:
+        f.write(args.name + "\n")
 
     # Read the file with the list of workloads
     with open(args.workloads, 'r') as f:
@@ -34,6 +39,10 @@ def process_intdata(workload, input_dir, output_dir):
     wl_name = "-".join(workload)
     files = ["{}/{}".format(input_dir, f) for f in os.listdir(input_dir) if re.match(r'{}_[0-9]+.csv$'.format(wl_name), f)]
 
+    if len(files) == 0:
+        print("The workload {} has no 'int' files".format(wl_name))
+        return
+
     dfs = read_and_merge(files, ["interval", "app"])
 
     # Store csv
@@ -51,6 +60,10 @@ def process_data(workload, input_dir, output_dir):
         # There is one file for each run of the workload
         wl_name = "-".join(workload)
         files = ["{}/{}".format(input_dir, f) for f in os.listdir(input_dir) if re.match(r'{}_[0-9]+_{}.csv$'.format(wl_name, kind), f)]
+
+        if len(files) == 0:
+            print("The workload {} has no '{}' files".format(wl_name, kind))
+            continue
 
         dfs = read_and_merge(files, ["app"])
 

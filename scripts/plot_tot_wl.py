@@ -4,6 +4,7 @@ import pandas as pd
 import re
 import yaml
 import os
+import os.path as osp
 
 from multiprocessing import Pool
 
@@ -15,17 +16,25 @@ def main():
     parser = argparse.ArgumentParser(description = 'Aggregates total stats for different runs of the same workload.')
     parser.add_argument('-w', '--workloads', required=True, help='YAML file with the workloads to process.')
     parser.add_argument('-i', '--input-dirs', nargs='+', required=True, help='Input data dirs.')
-    parser.add_argument('-n', '--names', nargs='+', required=True, help='Names for the input data dirs.')
-    parser.add_argument('-o', '--output-dir', default='plotint', help='Output dir.')
+    parser.add_argument('-n', '--names', nargs='+', default=[], help='Names for the input data dirs.')
+    parser.add_argument('-o', '--output-dir', default='plottot', help='Output dir.')
     parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use.')
     parser.add_argument('-c', '--columns', type=yaml.load, default=dict(), help='Dictionary with the coluluns to plot and the opperation to perform on them.')
     args = parser.parse_args()
 
-    assert len(args.input_dirs) == len(args.names)
-
     # Read the file with the list of workloads
     with open(args.workloads, 'r') as f:
         workloads = yaml.load(f)
+
+    # Create output dir
+    os.makedirs(osp.abspath(args.output_dir), exist_ok=True)
+
+    # Read names
+    if not args.names:
+        for idir in args.input_dirs:
+            with open("{}/name".format(idir)) as f:
+                args.names.append(f.readline().strip())
+    assert len(args.input_dirs) == len(args.names)
 
     # Prepare arguments
     arguments = list()
@@ -62,6 +71,12 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
         for exp_id, (exp_name, input_dir) in enumerate(zip(names, input_dirs)):
             wl_dir = "{}/{}".format(input_dir, wl_name)
             wl_fin = "{}/{}_fin.csv".format(input_dir, wl_name)
+
+            # Test if file exists
+            if not os.path.exists(wl_fin):
+                print("The workload {} has no 'fin' file".format(wl_name))
+                continue
+
             usecols = ["app", metric + ":mean", metric + ":std"]
             df = pd.read_table(wl_fin, sep=",", usecols=usecols)
             df.set_index("app", inplace=True)
@@ -78,7 +93,6 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
 
         dfs_metric.append(df)
     df = pd.concat(dfs_metric, axis=0).reset_index(drop=True) # We have data for all the workloads
-    print(df)
     df.to_csv(filename)
 
     plot = dict()
