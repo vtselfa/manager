@@ -50,16 +50,39 @@ std::vector<uint32_t> allowed_cpus(pid_t pid)
 }
 
 
-tasklist_t Fair::apply(const tasklist_t &tasklist)
+tasklist_t Fair::apply(uint64_t current_interval, const tasklist_t &tasklist)
 {
-	LOGDEB("Fair scheduling");
-
 	tasklist_t result;
+
+	// Apply the policy only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+	{
+		for (const auto &task : tasklist)
+			if (sched_last[task->id])
+				result.push_back(task);
+		LOGINF("Waiting to apply a schedule ({}/{})"_format(current_interval % every + 1, every));
+		return result; // If not enough intervals have passed, reschedule the same tasks
+	}
+
+	LOGINF("Fair scheduling");
+
 	const size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
 
 	auto clustering = cat::policy::Cluster_KMeans(weights.size(), cat_read_info()["L3"].num_closids, str_to_evalclusters("dunn"), event, false); // Last bool is sort_ascending
-	auto clusters = clustering.apply(tasklist);
+	clusters_t clusters;
+	try
+	{
+		clusters = clustering.apply(tasklist);
+	}
+	catch (const cat::policy::ClusteringBase::CouldNotCluster &e)
+	{
+		LOGWAR("Not doing any scheduling in interval {}: {}"_format(current_interval, e.what()));
+		// Store who has been scheduled
+		for (const auto &task : tasklist)
+			sched_last[task->id] = true;
+		return tasklist;
+	}
 
 	for (size_t i = 0; i < clusters.size(); i++)
 	{
@@ -163,7 +186,7 @@ void Base::set_cpu_affinity(const tasklist_t &tasklist) const
 }
 
 
-tasklist_t Base::apply(const tasklist_t &tasklist)
+tasklist_t Base::apply(uint64_t, const tasklist_t &tasklist)
 {
 	LOGDEB("Linux scheduling");
 	set_cpu_affinity(tasklist);
@@ -171,14 +194,28 @@ tasklist_t Base::apply(const tasklist_t &tasklist)
 }
 
 
-tasklist_t Random::apply(const tasklist_t &tasklist)
+tasklist_t Random::apply(uint64_t current_interval, const tasklist_t &tasklist)
 {
 	LOGDEB("Random scheduling");
+
+	tasklist_t result;
+
+	// Apply the policy only when the amount of intervals specified has passed
+	if (current_interval % every != 0)
+	{
+		// Store who has been scheduled
+		for (const auto &task : tasklist)
+			if (sched_last[task->id])
+				result.push_back(task);
+		return result; // If not enough intervals have passed, reschedule the same tasks
+	}
+
+	result = tasklist_t(tasklist);
+
 
 	size_t max_num_tasks = cpus.size();
 	assert(!cpus.empty());
 
-	tasklist_t result(tasklist);
 
 	std::random_shuffle(result.begin(), result.end());
 
@@ -192,6 +229,12 @@ tasklist_t Random::apply(const tasklist_t &tasklist)
 	assert(result.size() == max_num_tasks || tasklist.size() < max_num_tasks);
 
 	set_cpu_affinity(result);
+
+	// Store who has been scheduled
+	for (const auto &task : tasklist)
+		sched_last[task->id] = false;
+	for (const auto &task : result)
+		sched_last[task->id] = true;
 
 	return result;
 }

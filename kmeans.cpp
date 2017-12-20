@@ -442,7 +442,8 @@ size_t KMeans::clusterize_optimally(size_t max_k, const points_t &points, std::v
 	std::vector<Cluster> best_clusters;
 	size_t best_iter = 0;
 
-	assert(points.size() > 0);
+	if (points.empty())
+		throw_with_trace(std::runtime_error("No points to cluster"));
 
 	// If there 2 or less points, put each in a cluster
 	if (points.size() <= 2)

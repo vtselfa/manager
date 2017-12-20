@@ -175,7 +175,7 @@ void loop(
 		assert(!runlist.empty());
 
 		// Select tasks for next interval execution
-		schedlist = sched->apply(runlist);
+		schedlist = sched->apply(interval, runlist);
 
 		assert(!schedlist.empty());
 

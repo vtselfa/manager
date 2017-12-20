@@ -111,8 +111,7 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 		try
 		{
 			metric = acc::rolling_mean(task.stats.events.at(event));
-			if (metric == 0)
-				throw_with_trace(ClusteringBase::CouldNotCluster("The event '{}' value is 0 for task {}:{}"_format(event, task.id, task.name)));
+			metric = std::floor(metric * 100 + 0.5) / 100; // Round positive numbers to 2 decimals
 		}
 		catch (const std::exception &e)
 		{
@@ -121,6 +120,9 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 				msg += "\n" + kv.first;
 			throw_with_trace(std::runtime_error(msg));
 		}
+
+		if (metric == 0)
+			throw_with_trace(ClusteringBase::CouldNotCluster("The event '{}' value is 0 for task {}:{}"_format(event, task.id, task.name)));
 
 		data.push_back(std::make_shared<Point>(task.id, std::vector<double>{metric}));
 	}

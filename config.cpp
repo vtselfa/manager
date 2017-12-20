@@ -359,7 +359,7 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 	vector<string> allowed;
 
 	required = {"kind"};
-	allowed  = {"allowed_cpus"};
+	allowed  = {"allowed_cpus", "every"};
 
 	// Check minimum required fields
 	config_check_required_fields(sched, required);
@@ -368,17 +368,20 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 	vector<uint32_t> allowed_cpus = sched["allowed_cpus"] ?
 			sched["allowed_cpus"].as<decltype(allowed_cpus)>() :
 			sched::allowed_cpus(); // All the allowed cpus for this process according to Linux
+	uint32_t every = sched["every"] ? sched["every"].as<decltype(every)>() : 1;
 
 	if (kind == "linux")
 	{
+		if (every != 1)
+			LOGDEB("The Linux scheduler ingrores the 'every' option");
 		config_check_fields(sched, required, allowed);
-		return std::make_shared<sched::Base>(allowed_cpus);
+		return std::make_shared<sched::Base>(every, allowed_cpus);
 	}
 
 	if (kind == "random")
 	{
 		config_check_fields(sched, required, allowed);
-		return std::make_shared<sched::Random>(allowed_cpus);
+		return std::make_shared<sched::Random>(every, allowed_cpus);
 	}
 
 	if (kind == "fair")
@@ -391,7 +394,7 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 		string event = sched["event"].as<string>();
 		std::vector<uint32_t> weights = sched["weights"].as<decltype(weights)>();
 		bool at_least_one = sched["at_least_one"] ? sched["at_least_one"].as<bool>() : false;
-		return std::make_shared<sched::Fair>(allowed_cpus, event, weights, at_least_one);
+		return std::make_shared<sched::Fair>(every, allowed_cpus, event, weights, at_least_one);
 	}
 
 	throw_with_trace(std::runtime_error("Invalid sched kind '{}'"_format(kind)));

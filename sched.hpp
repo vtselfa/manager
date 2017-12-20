@@ -21,6 +21,9 @@ class Base
 {
 	protected:
 
+	// Number of intervals elapsed between schedules
+	uint32_t every;
+
 	// Allowed cpus
 	const std::vector<uint32_t> cpus;
 
@@ -29,12 +32,12 @@ class Base
 
 	public:
 
-	Base() : cpus(allowed_cpus()) {};
-	Base(const std::vector<uint32_t> &_cpus) : cpus(_cpus) {};
+	Base() : every(1), cpus(allowed_cpus()) {};
+	Base(uint32_t _every, const std::vector<uint32_t> &_cpus) : every(_every), cpus(_cpus) {};
 	~Base() = default;
 
 	const std::string show(const tasklist_t &tasklist) const;
-	virtual tasklist_t apply(const tasklist_t &tasklist);
+	virtual tasklist_t apply(uint64_t current_interval, const tasklist_t &tasklist);
 };
 typedef std::shared_ptr<Base> ptr_t;
 
@@ -51,23 +54,25 @@ class Fair : public Base
 	public:
 
 	Fair() = delete;
-	Fair(const std::vector<uint32_t> &_cpus, const std::string &_event, const std::vector<uint32_t> &_weights, bool _at_least_one) :
-			Base(_cpus), event(_event), weights(_weights), at_least_one(_at_least_one) {};
+	Fair(uint32_t _every, const std::vector<uint32_t> &_cpus, const std::string &_event, const std::vector<uint32_t> &_weights, bool _at_least_one) :
+			Base(_every, _cpus), event(_event), weights(_weights), at_least_one(_at_least_one) {};
 	~Fair() = default;
 
-	virtual tasklist_t apply(const tasklist_t &tasklist) override;
+	virtual tasklist_t apply(uint64_t current_interval, const tasklist_t &tasklist) override;
 };
 
 
 class Random : public Base
 {
+	std::map<uint32_t, bool> sched_last;
+
 	public:
 
 	Random() = default;
-	Random(const std::vector<uint32_t> &_cpus) : Base(_cpus) {};
+	Random(uint32_t _every, const std::vector<uint32_t> &_cpus) : Base(_every, _cpus) {};
 	~Random() = default;
 
-	virtual tasklist_t apply(const tasklist_t &tasklist) override;
+	virtual tasklist_t apply(uint64_t current_interval, const tasklist_t &tasklist) override;
 };
 
 
