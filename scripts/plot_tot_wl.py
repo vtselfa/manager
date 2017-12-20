@@ -106,7 +106,16 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
     plot["labels"] = names
     plot["xlabel"] = "Workloads"
     plot["ylabel"] = metric
-    # plot["vl"] = [lastint_mean, {"xerr": [0, lastint_std, 0], "color": None}]
+    plot["yminorlocator"] = ["AutoMinorLocator", {"n": 5}]
+    plot["xminorlocator"] = ["IndexLocator", {"base": 1, "offset": 0}]
+    hlines = []
+    for n, name in enumerate(names):
+        column = "{}:{}".format(name, metric)
+        hlines += [[df[column].median(), {"linestyle": '-.', "color": "D{}".format(n)}]]
+        hlines += [[df[column].quantile(0.25), {"linestyle": ':', "color": "D{}".format(n)}]]
+        hlines += [[df[column].quantile(0.75), {"linestyle": ':', "color": "D{}".format(n)}]]
+    print(hlines)
+    plot["hl"] = hlines
     # if exp_id > 0:
     #     plot["axnum"] = axnum
     a.plot.append(plot)
