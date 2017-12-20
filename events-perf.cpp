@@ -68,6 +68,42 @@ void Perf::disable_counters(pid_t pid)
 }
 
 
+uint64_t read_max_ujoules_ram()
+{
+	// TODO: This needs improvement... i.e. consider more packages etc.
+	auto fdata = open_ifstream("/sys/class/powercap/intel-rapl:0/intel-rapl:0:0/max_energy_range_uj");
+	auto fname = open_ifstream("/sys/class/powercap/intel-rapl:0/intel-rapl:0:0/name");
+	uint64_t data;
+
+	fdata >> data;
+
+	std::string name;
+	fname >> name;
+
+	assert(name == "dram");
+
+	return data;
+}
+
+
+uint64_t read_max_ujoules_pkg()
+{
+	// TODO: This needs improvement... i.e. consider more packages etc.
+	auto fdata = open_ifstream("/sys/class/powercap/intel-rapl:0/max_energy_range_uj");
+	auto fname = open_ifstream("/sys/class/powercap/intel-rapl:0/name");
+	uint64_t data;
+
+	fdata >> data;
+
+	std::string name;
+	fname >> name;
+
+	assert(name == "package-0");
+
+	return data;
+}
+
+
 double read_energy_ram()
 {
 	// TODO: This needs improvement... i.e. consider more packages etc.

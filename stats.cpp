@@ -163,10 +163,17 @@ Stats& Stats::accum(const counters_t &counters)
 
 			if (value < 0)
 			{
-				// We assume there has been an overflow with the energy, and we try to correct it
-				assert(c.name == "power/energy-ram/" || c.name == "power/energy-pkg/");
-				double newvalue = last(c.name);
-				LOGERR("Negative interval value ({}) for the counter '{}', it has been replaced by {}. Start: {}, end: {}"_format(value, c.name, newvalue, c.value, l.value));
+				// There has been an overflow with the energy, and we have to correct it
+				double newvalue = 0;
+				if (c.name == "power/energy-pkg/")
+					newvalue = c.value * 1E6 + (read_max_ujoules_pkg() - l.value * 1E6);
+				else if (c.name == "power/energy-ram/")
+					newvalue = c.value * 1E6 + (read_max_ujoules_ram() - l.value * 1E6);
+				else
+					throw_with_trace(std::runtime_error("Negative interval value ({}) for the counter '{}'"_format(value, c.name)));
+
+				newvalue /= 1E6;
+				LOGDEB("Energy counter '{}' overflow. Last interval value was {}. Current will be {}"_format(c.name, last(c.name), newvalue));
 				value = newvalue;
 			}
 

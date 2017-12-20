@@ -93,3 +93,7 @@ class Perf
 	void disable_counters(pid_t pid);
 	void print_counters(pid_t pid);
 };
+
+
+uint64_t read_max_ujoules_ram();
+uint64_t read_max_ujoules_pkg();
