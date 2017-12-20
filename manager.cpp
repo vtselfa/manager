@@ -172,8 +172,12 @@ void loop(
 		// Remove tasks that are done from runlist
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
 
+		assert(!runlist.empty());
+
 		// Select tasks for next interval execution
 		schedlist = sched->apply(runlist);
+
+		assert(!schedlist.empty());
 
 		LOGDEB(iterable_to_string(schedlist.begin(), schedlist.end(), [](const auto &t) {return "{}:{}[{}]({})"_format(t->id, t->name, sched::Status(t->pid)("Cpus_allowed_list"), sched::Stat(t->pid).processor);}, " "));
 
@@ -199,6 +203,8 @@ void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, 
 	uint64_t total_elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>
 			(std::chrono::system_clock::now() - start_glob).count();
 
+	uint64_t last = adj_delay_us;
+
 	// Adjust time with a PI controller
 	const double kp = 0.5;
 	const double ki = 0.25;
@@ -209,8 +215,9 @@ void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, 
 
 	if (adj_delay_us < 0)
 	{
-		LOGWAR("This interval was way too long. The next interval should last {} us. It will last 0."_format(adj_delay_us));
-		adj_delay_us = 0;
+		last *= 0;
+		LOGINF("This interval ({}) was way too long. The next interval should last {} us. It will last {}."_format(interval, adj_delay_us, last));
+		adj_delay_us = last;
 	}
 }
 

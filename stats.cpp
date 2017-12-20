@@ -173,7 +173,7 @@ Stats& Stats::accum(const counters_t &counters)
 			assert(c.enabled >= 0 && c.enabled <= 1);
 
 			if (c.enabled == 0)
-				LOGERR("Counter '{}' was not enabled during this interval"_format(c.name));
+				LOGINF("Counter '{}' was not enabled during this interval"_format(c.name));
 			else if (c.enabled < 1)
 			{
 				value /= c.enabled;

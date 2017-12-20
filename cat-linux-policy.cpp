@@ -247,7 +247,7 @@ void ClusterAndDistribute::apply(uint64_t current_interval, const tasklist_t &ta
 	}
 	catch (const ClusteringBase::CouldNotCluster &e)
 	{
-		LOGWAR("{}: Not doing any partitioning this interval"_format(e.what()));
+		LOGWAR("Not doing any partitioning in interval {}: {}"_format(current_interval, e.what()));
 		return;
 	}
 	auto ways = distributing->apply(tasklist, clusters);
