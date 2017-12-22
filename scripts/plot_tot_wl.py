@@ -101,13 +101,12 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
     plot["index"] = 0
     plot["cols"] =  [df.columns.get_loc("{}:{}".format(n, metric)) + 1 for n in names]
     plot["ecols"] = [df.columns.get_loc("{}:{}:std".format(n, metric)) + 1 for n in names]
-    # plot["errorbars"] = "both"
-    # plot["title"] = metric
     plot["labels"] = names
     plot["xlabel"] = "Workloads"
     plot["ylabel"] = metric
     plot["yminorlocator"] = ["AutoMinorLocator", {"n": 5}]
     plot["xminorlocator"] = ["IndexLocator", {"base": 1, "offset": 0}]
+    plot["ymin"] = 0
     hlines = []
     for n, name in enumerate(names):
         column = "{}:{}".format(name, metric)
@@ -116,8 +115,6 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
         hlines += [[df[column].quantile(0.75), {"linestyle": ':', "color": "D{}".format(n)}]]
     print(hlines)
     plot["hl"] = hlines
-    # if exp_id > 0:
-    #     plot["axnum"] = axnum
     a.plot.append(plot)
 
     grid = [[1,1]]
