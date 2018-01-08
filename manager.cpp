@@ -361,6 +361,9 @@ int main(int argc, char *argv[])
 	const string min_clog = "war";
 	const string min_flog = "dbg";
 
+	// Options that can be setted using the config file
+	CmdOptions options;
+
 	po::options_description desc("Allowed options");
 	desc.add_options()
 		("help,h", "print usage message")
@@ -371,18 +374,18 @@ int main(int argc, char *argv[])
 		("total-output", po::value<string>()->default_value(""), "pathname for total output values")
 		("rundir", po::value<string>()->default_value("run"), "directory for creating the directories where the applications are gonna be executed")
 		("id", po::value<string>()->default_value(random_string(10)), "identifier for the experiment")
-		("ti", po::value<double>()->default_value(1), "time-interval, duration in seconds of the time interval to sample performance counters.")
-		("mi", po::value<uint32_t>()->default_value(std::numeric_limits<uint32_t>::max()), "max-intervals, maximum number of intervals.")
+		("ti", po::value<double>(), "time-interval, duration in seconds of the time interval to sample performance counters.")
+		("mi", po::value<uint32_t>(), "max-intervals, maximum number of intervals.")
 		("event,e", po::value<vector<string>>()->composing()->multitoken(), "optional list of custom events to monitor (up to 4)")
 		("cpu-affinity", po::value<vector<uint32_t>>()->multitoken(), "cpus in which this application (not the workloads) is allowed to run")
 		("clog-min", po::value<string>()->default_value(min_clog), "Minimum severity level to log into the console, defaults to warning")
 		("flog-min", po::value<string>()->default_value(min_flog), "Minimum severity level to log into the log file, defaults to info")
 		("log-file", po::value<string>()->default_value("manager.log"), "file used for the general application log")
-		("cat-impl", po::value<string>()->default_value("intel"), "Which implementation of CAT to use (linux or intel)")
+		("cat-impl", po::value<string>(), "Which implementation of CAT to use (linux or intel)")
 		;
 
 	bool option_error = false;
-	string options;
+	string option_str;
 	po::variables_map vm;
 	try
 	{
@@ -390,7 +393,7 @@ int main(int argc, char *argv[])
 		po::parsed_options parsed_options = po::command_line_parser(argc, argv)
 			.options(desc)
 			.run();
-		options = program_options_to_string(parsed_options.options);
+		option_str = program_options_to_string(parsed_options.options);
 
 		po::store(parsed_options, vm);
 		po::notify(vm);
@@ -418,11 +421,7 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < argc; i++)
 		cmdline += " {}"_format(argv[i]);
 	LOGINF("Program cmdline:{}"_format(cmdline));
-	LOGINF("Program options:\n" + options);
-
-	// Set CPU affinity for not interfering with the executed workloads
-	if (vm.count("cpu-affinity"))
-		set_cpu_affinity(vm["cpu-affinity"].as<vector<uint32_t>>());
+	LOGINF("Program options:\n" + option_str);
 
 	// Open output streams
 	auto int_out    = std::shared_ptr<std::ostream>();
@@ -443,7 +442,7 @@ int main(int argc, char *argv[])
 		// Read config and set tasklist and coslist
 		config_file = vm["config"].as<string>();
 		string config_override = vm["config-override"].as<string>();
-		config_read(config_file, config_override, tasklist, coslist, catpol, sched);
+		config_read(config_file, config_override, options, tasklist, coslist, catpol, sched);
 		tasks_set_rundirs(tasklist, vm["rundir"].as<string>() + "/" + vm["id"].as<string>());
 	}
 	catch(const YAML::ParserException &e)
@@ -459,10 +458,26 @@ int main(int argc, char *argv[])
 			LOGFAT("Error reading config file '" + config_file + "': " + e.what()) ;
 	}
 
+	// This options can be setted from the config file
+	// The priority order is: commandline > config file > option defaults
+	if (!vm["cat-impl"].empty())
+		options.cat_impl = vm["cat-impl"].as<string>();
+	if (!vm["ti"].empty())
+		options.ti = vm["ti"].as<double>();
+	if (!vm["mi"].empty())
+		options.mi = vm["mi"].as<uint32_t>();
+	if (!vm["event"].empty())
+		options.event = vm["event"].as<vector<string>>();
+	if (!vm["cpu-affinity"].empty())
+		options.cpu_affinity = vm["cpu-affinity"].as<vector<uint32_t>>();
+
+	// Set CPU affinity for not interfering with the executed workloads
+	set_cpu_affinity(options.cpu_affinity);
+
 	try
 	{
 		// Initial CAT configuration. It may be modified by the CAT policy.
-		cat = cat_setup(vm["cat-impl"].as<string>(), coslist);
+		cat = cat_setup(options.cat_impl, coslist);
 		catpol->set_cat(cat);
 	}
 	catch (const std::exception &e)
@@ -484,15 +499,12 @@ int main(int argc, char *argv[])
 		LOGINF("Tasks ready");
 
 		// Setup events
-		auto events = vector<string>{"ref-cycles", "instructions"};
-		if (vm.count("event"))
-			events = vm["event"].as<vector<string>>();
 		for (const auto &task : tasklist)
-			perf.setup_events(task->pid, events);
+			perf.setup_events(task->pid, options.event);
 
 		// Start doing things
 		LOGINF("Start main loop");
-		loop(tasklist, sched, catpol, perf, events, vm["ti"].as<double>() * 1000 * 1000, vm["mi"].as<uint32_t>(), *int_out, *ucompl_out, *total_out);
+		loop(tasklist, sched, catpol, perf, options.event, options.ti * 1000 * 1000, options.mi, *int_out, *ucompl_out, *total_out);
 
 		// Kill tasks, reset CAT, performance monitors, etc...
 		clean(tasklist, catpol->get_cat(), perf);

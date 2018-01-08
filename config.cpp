@@ -401,7 +401,37 @@ sched::ptr_t config_read_sched(const YAML::Node &config)
 }
 
 
-void config_read(const string &path, const string &overlay, tasklist_t &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol, sched::ptr_t &sched)
+static
+void config_read_cmd_options(const YAML::Node &config, CmdOptions &cmd_options)
+{
+	if (!config["cmd"])
+		return;
+
+	const auto &cmd = config["cmd"];
+
+	vector<string> required;
+	vector<string> allowed;
+
+	required = {};
+	allowed  = {"ti", "mi", "event", "cpu-affinity", "cat-impl"};
+
+	// Check minimum required fields
+	config_check_fields(cmd, required, allowed);
+
+	if (cmd["ti"])
+		cmd_options.ti = cmd["ti"].as<decltype(cmd_options.ti)>();
+	if (cmd["mi"])
+		cmd_options.mi = cmd["mi"].as<decltype(cmd_options.mi)>();
+	if (cmd["event"])
+		cmd_options.event = cmd["event"].as<decltype(cmd_options.event)>();
+	if (cmd["cpu-affinity"])
+		cmd_options.cpu_affinity = cmd["cpu-affinity"].as<decltype(cmd_options.cpu_affinity)>();
+	if (cmd["cat-impl"])
+		cmd_options.cat_impl = cmd["cat-impl"].as<decltype(cmd_options.cat_impl)>();
+}
+
+
+void config_read(const string &path, const string &overlay, CmdOptions &cmd_options, tasklist_t &tasklist, vector<Cos> &coslist, std::shared_ptr<cat::policy::Base> &catpol, sched::ptr_t &sched)
 {
 	// The message outputed by YAML is not clear enough, so we test first
 	std::ifstream f(path);
@@ -438,4 +468,7 @@ void config_read(const string &path, const string &overlay, tasklist_t &tasklist
 
 	// Read scheduler
 	sched = config_read_sched(config);
+
+	// Read general config
+	config_read_cmd_options(config, cmd_options);
 }

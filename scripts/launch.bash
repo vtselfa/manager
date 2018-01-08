@@ -14,9 +14,9 @@ echo 2200000 | tee /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq > /d
 # Save manager binary
 cp /home/viselol/manager/manager .
 
-EVENTS=${EVENTS-instructions,cycles,mem_load_uops_retired.l2_hit,mem_load_uops_retired.l2_miss,mem_load_uops_retired.l3_hit,mem_load_uops_retired.l3_miss,cycle_activity.stalls_ldm_pending,intel_cqm/llc_occupancy/}
-
-echo Events: ${EVENTS}
+# EVENTS=${EVENTS-instructions,cycles,mem_load_uops_retired.l2_hit,mem_load_uops_retired.l2_miss,mem_load_uops_retired.l3_hit,mem_load_uops_retired.l3_miss,cycle_activity.stalls_ldm_pending,intel_cqm/llc_occupancy/}
+#
+# echo Events: ${EVENTS}
 
 mkdir -p data
 mkdir -p configs
@@ -42,7 +42,7 @@ for ((REP=${INI_REP};REP<${MAX_REP};REP++)); do
 			echo $WL $((REP+1))/${MAX_REP} 0x${MASK}
 			python3 ${DIR}/makoc.py template.mako --lookup "${DIR}/templates" --defs '{apps: ['$(join_by , ${WL[@]})'], mask: '$MASK'}'> ${CONFIG} || exit 1
 
-			./manager --config ${CONFIG} --ti ${INT} --mi ${MAX} -e ${EVENTS} -o ${OUT} --fin-out ${FIN_OUT} --total-out ${TOT_OUT} --flog-min dbg --log-file $LOG --cat-impl linux
+			./manager --config ${CONFIG} -o ${OUT} --fin-out ${FIN_OUT} --total-out ${TOT_OUT} --flog-min dbg --log-file $LOG --cat-impl linux
 
 		done < $1
 	done
