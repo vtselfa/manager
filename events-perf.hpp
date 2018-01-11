@@ -22,11 +22,12 @@ struct Counter
 	double value = 0;
 	std::string unit = "";
 	bool snapshot = false;
-	double enabled = 0;
+	uint64_t enabled = 0;
+	uint64_t running = 0;
 
 	Counter() = default;
-	Counter(int _id, const std::string &_name, double _value, const std::string &_unit, bool _snapshot, double _enabled) :
-			id(_id), name(_name), value(_value), unit(_unit), snapshot(_snapshot), enabled(_enabled) {};
+	Counter(int _id, const std::string &_name, double _value, const std::string &_unit, bool _snapshot, uint64_t _enabled, uint64_t _running) :
+			id(_id), name(_name), value(_value), unit(_unit), snapshot(_snapshot), enabled(_enabled), running(_running) {};
 	bool operator<(const Counter &c) const {return id < c.id;}
 };
 

@@ -98,7 +98,7 @@ static int read_counter(struct perf_evlist *evsel_list, struct perf_evsel *count
 }
 
 
-void read_counters(struct perf_evlist *evsel_list, const char **names, double *results, const char **units, bool *snapshot, double *enabled)
+void read_counters(struct perf_evlist *evsel_list, const char **names, double *results, const char **units, bool *snapshot, uint64_t *enabled, uint64_t *running)
 {
 	struct perf_evsel *counter;
 	struct perf_stat_config stat_config =
@@ -131,6 +131,7 @@ void read_counters(struct perf_evlist *evsel_list, const char **names, double *r
 				ena += perf_counts(counter->counts, cpu, thread)->ena;
 				run += perf_counts(counter->counts, cpu, thread)->run;
 			}
+			assert(run <= ena);
 		}
 		if (names)
 			names[i] = counter->name;
@@ -141,7 +142,9 @@ void read_counters(struct perf_evlist *evsel_list, const char **names, double *r
 		if (snapshot)
 			snapshot[i] = counter->snapshot;
 		if (enabled)
-			enabled[i] = run == ena ? 1 : (double) run / (double) ena;
+			enabled[i] = ena;
+		if (running)
+			running[i] = run;
 		i++;
 	}
 }
@@ -311,7 +314,7 @@ void clean(struct perf_evlist *evlist)
 	 * group leaders.
 	 */
 	disable_counters(evlist);
-	read_counters(evlist, NULL, NULL, NULL, NULL, NULL);
+	read_counters(evlist, NULL, NULL, NULL, NULL, NULL, NULL);
 	perf_evlist__close(evlist);
 	perf_evlist__free_stats(evlist);
 	perf_evlist__delete(evlist);

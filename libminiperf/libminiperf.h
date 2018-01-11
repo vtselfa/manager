@@ -1,10 +1,11 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct perf_evlist;
 
-void read_counters(struct perf_evlist *evsel_list, const char **names, double *results, const char **units, bool *snapshot, double *enabled);
+void read_counters(struct perf_evlist *evsel_list, const char **names, double *results, const char **units, bool *snapshot, uint64_t *enabled, uint64_t *running);
 void get_names(struct perf_evlist *evsel_list, const char **names);
 void enable_counters(struct perf_evlist *evsel_list);
 void disable_counters(struct perf_evlist *evsel_list);

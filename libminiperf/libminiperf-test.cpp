@@ -12,7 +12,7 @@ int main(int argc, char **argv)
 	while(true)
 	{
 		sleep(1);
-		read_counters(evlist, NULL, NULL, NULL, NULL, NULL);
+		read_counters(evlist, NULL, NULL, NULL, NULL, NULL, NULL);
 		print_counters(evlist);
 	}
 

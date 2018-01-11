@@ -139,7 +139,7 @@ void loop(
 			task.stats.accum(counters);
 
 			// Test if the instruction limit has been reached
-			if (task.max_instr > 0 && task.stats.get_current("instructions") >=  task.max_instr)
+			if (task.max_instr > 0 && task.stats.get_current("instructions") >= task.max_instr)
 			{
 				task.set_status(Task::Status::limit_reached); // Status can change from runnable -> limit_reached
 				task.completed++;

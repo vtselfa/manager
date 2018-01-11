@@ -118,8 +118,8 @@ Stats& Stats::accum(const counters_t &counters)
 	clast = ccurr;
 	ccurr = counters;
 
-	const auto &curr_id_idx = ccurr.get<by_id>();
 	const auto &last_id_idx = clast.get<by_id>();
+	auto &curr_id_idx = ccurr.get<by_id>();
 
 	assert(!ccurr.empty());
 
@@ -133,12 +133,10 @@ Stats& Stats::accum(const counters_t &counters)
 					0 :
 					it->value;
 
-			assert(it->enabled > 0 && it->enabled <= 1);
-			if (it->enabled < 1)
-			{
-				value /= it->enabled;
-				LOGINF("Counter {} has been scaled ({})"_format(it->name, it->enabled));
-			}
+			assert(it->running >= 0 && it->running <= it->enabled);
+
+			if (it->running)
+				value /= it->running / it->enabled;
 
 			events.at(it->name)(value);
 			it++;
@@ -177,19 +175,26 @@ Stats& Stats::accum(const counters_t &counters)
 				value = newvalue;
 			}
 
-			assert(c.enabled >= 0 && c.enabled <= 1);
+			assert(c.enabled >= 0 && c.running <= c.enabled);
 
+			double enabled_fraction = (double) c.running / (double) c.enabled;
 			if (c.enabled == 0)
 				LOGINF("Counter '{}' was not enabled during this interval"_format(c.name));
-			else if (c.enabled < 1)
+			else if (enabled_fraction < 1)
 			{
-				value /= c.enabled;
-				LOGDEB("Counter {} has been scaled ({})"_format(c.name, c.enabled));
+				value /= enabled_fraction;
+				LOGDEB("Counter {} has been scaled ({})"_format(c.name, enabled_fraction));
 			}
 			else
-				LOGDEB("Counter {} has been read without scaling ({})"_format(c.name, c.enabled));
-
+			{
+				assert(enabled_fraction == 1);
+				LOGDEB("Counter {} has been read without scaling"_format(c.name));
+			}
 			events.at(c.name)(value);
+
+			// Perf reports events since the begining of the execution, but enabled and running times are for the interval.
+			// Therefore, in order to know the running and enabled times since the start we need to accumulate them.
+			curr_id_idx.modify(curr_it, [&l](auto &c_){c_.enabled += l.enabled; c_.running += l.running;});
 
 			curr_it++;
 			last_it++;
@@ -293,7 +298,8 @@ double Stats::get_current(const std::string &name) const
 	auto it = curr_index.find(name);
 	if (it == curr_index.end())
 		throw_with_trace(std::runtime_error("Event not monitorized '{}'"_format(name)));
-	return it->value / it->enabled;
+	if (it->value == 0) return 0; // This way we don't have to worry about enabled being 0
+	return it->value / ((double) it->running / (double) it->enabled);
 }
 
 

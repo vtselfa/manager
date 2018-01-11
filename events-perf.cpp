@@ -150,7 +150,8 @@ std::vector<counters_t> Perf::read_counters(pid_t pid)
 	double results[max_num_events];
 	const char *units[max_num_events];
 	bool snapshot[max_num_events];
-	double enabled[max_num_events];
+	uint64_t enabled[max_num_events];
+	uint64_t running[max_num_events];
 
 	const auto epkg = "power/energy-pkg/";
 	const auto eram = "power/energy-ram/";
@@ -162,15 +163,18 @@ std::vector<counters_t> Perf::read_counters(pid_t pid)
 	{
 		int n = ::num_entries(evlist);
 		auto counters = counters_t();
-		::read_counters(evlist, names, results, units, snapshot, enabled);
+		::read_counters(evlist, names, results, units, snapshot, enabled, running);
 		int i;
 		for (i = 0; i < n; i++)
-			counters.insert({i, names[i], results[i], units[i], snapshot[i], enabled[i]});
+		{
+			assert(running[i] <= enabled[i]);
+			counters.insert({i, names[i], results[i], units[i], snapshot[i], enabled[i], running[i]});
+		}
 		// Put energy measurements only in the first group
 		if (first)
 		{
-			counters.insert({i++, epkg, read_energy_pkg(), "j", false, 1});
-			counters.insert({i++, eram, read_energy_ram(), "j", false, 1});
+			counters.insert({i++, epkg, read_energy_pkg(), "j", false, 1, 1});
+			counters.insert({i++, eram, read_energy_ram(), "j", false, 1, 1});
 			first = false;
 		}
 		result.push_back(counters);
