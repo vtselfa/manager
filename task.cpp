@@ -330,36 +330,31 @@ std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 }
 
 
-// Kill the tasks that have reached their exec limit, clean the exited ones,
-// and restart the applications that have not reached their maximum number of restarts
-void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events)
+void task_restart_or_set_done(Task &task, Perf &perf, const std::vector<std::string> &events)
 {
-	for (const auto &task : tasklist)
+	auto status = task.get_status();
+	if (status == Task::Status::limit_reached || status == Task::Status::exited)
 	{
-		auto status = task->get_status();
-		if (status == Task::Status::limit_reached || status == Task::Status::exited)
+		perf.clean(task.pid);
+		if (status == Task::Status::limit_reached)
 		{
-			perf.clean(task->pid);
-			if (status == Task::Status::limit_reached)
-			{
-				LOGINF("Task {}:{} limit reached, killing"_format(task->id, task->name));
-				task_kill(*task);
-			}
-			else if (status != Task::Status::exited)
-			{
-				throw_with_trace(std::runtime_error("Should not have reached this..."));
-			}
+			LOGINF("Task {}:{} limit reached, killing"_format(task.id, task.name));
+			task_kill(task);
+		}
+		else if (status != Task::Status::exited)
+		{
+			throw_with_trace(std::runtime_error("Should not have reached this..."));
+		}
 
-			// Restart task if the maximum number of restarts has not been reached
-			if (task->num_restarts < task->max_restarts)
-			{
-				task_restart(*task);
-				perf.setup_events(task->pid, events);
-			}
-			else
-			{
-				task->set_status(Task::Status::done);
-			}
+		// Restart task if the maximum number of restarts has not been reached
+		if (task.num_restarts < task.max_restarts)
+		{
+			task_restart(task);
+			perf.setup_events(task.pid, events);
+		}
+		else
+		{
+			task.set_status(Task::Status::done);
 		}
 	}
 }

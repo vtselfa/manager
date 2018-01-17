@@ -136,11 +136,13 @@ Stats& Stats::accum(const counters_t &counters)
 			assert(it->running >= 0 && it->running <= it->enabled);
 
 			if (it->running)
-				value /= it->running / it->enabled;
+				value /= (double) it->running / (double) it->enabled;
 
+			assert(std::isfinite(value));
 			events.at(it->name)(value);
 			it++;
 		}
+		cbak = counters; // For being able to iterate them later
 	}
 
 	// We have data from the last interval
@@ -190,6 +192,8 @@ Stats& Stats::accum(const counters_t &counters)
 				assert(enabled_fraction == 1);
 				LOGDEB("Counter {} has been read without scaling"_format(c.name));
 			}
+
+			assert(std::isfinite(value));
 			events.at(c.name)(value);
 
 			// Perf reports events since the begining of the execution, but enabled and running times are for the interval.
@@ -235,11 +239,11 @@ std::string Stats::data_to_string_total(const std::string &sep) const
 {
 	std::stringstream ss;
 
-	assert(ccurr.size() > 0);
+	assert(cbak.size() > 0);
 
-	const auto &curr_id_idx = ccurr.get<by_id>();
-	auto it = curr_id_idx.cbegin();
-	while (it != curr_id_idx.cend())
+	const auto &cbak_id_idx = cbak.get<by_id>();
+	auto it = cbak_id_idx.cbegin();
+	while (it != cbak_id_idx.cend())
 	{
 		const auto &name = it->name;
 		const accum_t &event = events.at(name);
@@ -248,7 +252,7 @@ std::string Stats::data_to_string_total(const std::string &sep) const
 				acc::sum(event);
 		ss << value;
 		it++;
-		if (it != curr_id_idx.cend())
+		if (it != cbak_id_idx.cend())
 			ss << sep;
 	}
 
@@ -267,17 +271,15 @@ std::string Stats::data_to_string_int(const std::string &sep) const
 {
 	std::stringstream ss;
 
-	assert(ccurr.size() > 0);
+	assert(names.size() > 0);
 
-	const auto &curr_id_idx = ccurr.get<by_id>();
-
-	auto curr_it = curr_id_idx.cbegin();
-	while (curr_it != curr_id_idx.cend())
+	auto it1 = names.cbegin();
+	while (it1 != names.cend())
 	{
-		ss << acc::last(events.at(curr_it->name));
-		curr_it++;
+		ss << acc::last(events.at(*it1));
+		it1++;
 
-		if (curr_it != ccurr.cend())
+		if (it1 != names.cend())
 			ss << sep;
 	}
 

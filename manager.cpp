@@ -149,21 +149,23 @@ void loop(
 			if (!task.completed && !task.batch)
 				all_completed = false;
 
-			// It's the first time it finishes or reaches the instruction limit
-			// Print acumulated stats until this point
-			if (task.completed == 1)
+			// Print interval stats
+			task_stats_print_interval(task, interval, out);
+
+			// It's the first time it finishes or reaches the instruction limit print acumulated stats until this point
+			if (task.get_status() == Task::Status::limit_reached || task.get_status() == Task::Status::exited)
 			{
-				auto s = task.get_status();
-				if (s == Task::Status::limit_reached || s == Task::Status::exited)
+				if (task.completed == 1)
 					task_stats_print_total(task, interval, ucompl_out);
 			}
 
-			// Print interval stats
-			task_stats_print_interval(task, interval, out);
-		}
+			// Deal with apps that finish or reach the limit
+			task_restart_or_set_done(task, perf, events); // Status can change from (exited | limit_reached) -> done
 
-		// Restart the tasks that have reached their limit
-		tasks_kill_and_restart(schedlist, perf, events); // Status can change from (exited | limit_reached) -> done
+			// If it's done print total stats
+			if (task.get_status() == Task::Status::done)
+				task_stats_print_total(task, interval, total_out);
+		}
 
 		// All the tasks have reached their limit -> finish execution
 		if (all_completed)
@@ -171,12 +173,10 @@ void loop(
 
 		// Remove tasks that are done from runlist
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
-
 		assert(!runlist.empty());
 
 		// Select tasks for next interval execution
 		schedlist = sched->apply(interval, runlist);
-
 		assert(!schedlist.empty());
 
 		LOGDEB(iterable_to_string(schedlist.begin(), schedlist.end(), [](const auto &t) {return "{}:{}[{}]({})"_format(t->id, t->name, sched::Status(t->pid)("Cpus_allowed_list"), sched::Stat(t->pid).processor);}, " "));
@@ -189,8 +189,12 @@ void loop(
 	for (const auto &task : tasklist)
 	{
 		if (!task->completed)
+		{
 			task_stats_print_total(*task, interval, ucompl_out);
-		task_stats_print_total(*task, interval, total_out);
+			task_stats_print_total(*task, interval, total_out);
+		}
+		if (task->get_status() != Task::Status::done)
+			task_stats_print_total(*task, interval, total_out);
 	}
 }
 
@@ -236,9 +240,16 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 	try
 	{
 		for (const auto &task : tasklist)
+			if (task->get_status() != Task::Status::done)
+				task_resume(*task);
+		sleep_for(chr::milliseconds(1000));
+		for (const auto &task : tasklist)
 		{
 			if (task->get_status() != Task::Status::done)
+			{
+				assert(task->get_status() == Task::Status::runnable);
 				task_kill(*task);
+			}
 			fs::remove_all(task->rundir);
 		}
 	}

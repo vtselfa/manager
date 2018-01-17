@@ -75,7 +75,6 @@ typedef std::vector<task_ptr_t> tasklist_t;
 void tasks_set_rundirs(tasklist_t &tasklist, const std::string &rundir_base);
 void tasks_pause(tasklist_t &tasklist);
 void tasks_resume(const tasklist_t &tasklist);
-void tasks_kill_and_restart(tasklist_t &tasklist, Perf &perf, const std::vector<std::string> &events);
 void tasks_map_to_initial_clos(tasklist_t &tasklist, const std::shared_ptr<CATLinux> &cat);
 std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist);
 const task_ptr_t& tasks_find(const tasklist_t &tasklist, uint32_t id);
@@ -90,6 +89,10 @@ void task_kill(Task &task);
 void task_restart(Task &task);
 void task_kill_and_restart(Task &task);
 bool task_exited(const Task &task); // Test if the task has exited
+
+// If the limit has been reached, kill the application.
+// If the limit of restarts has not been reached, restart the application. If the limit of restarts was reached, mark the application as done.
+void task_restart_or_set_done(Task &task, Perf &perf, const std::vector<std::string> &events);
 
 void task_stats_print_headers(const Task &t, std::ostream &out, const std::string &sep = ",");
 void task_stats_print_interval(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep = ",");

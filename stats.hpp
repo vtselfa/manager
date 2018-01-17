@@ -36,6 +36,7 @@ class Stats
 	uint64_t counter = 0;
 
 	// Last and current counter values that have been passed to the 'accum' method
+	counters_t cbak; // Only for the names and properties of the counters after a reset
 	counters_t clast;
 	counters_t ccurr;
 
