@@ -182,6 +182,7 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 
 		double MPKIL3 = (double)(l3_miss*1000) / (double)inst;
 
+		//LOGINF("IPC of task {} is {}"_format(taskPID,ipc));
         LOGINF("Task {} has {} MPKI in L3"_format(taskName,MPKIL3));
         v.push_back(std::make_pair(taskPID, MPKIL3));
         v_ipc.push_back(std::make_pair(taskPID, ipc));
@@ -200,7 +201,6 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
     if (current_interval >= firstInterval)
     {
 		// MEAN AND STD LIMIT OUTLIER CALCULATION
-
 		//accumulate value
 		macc(meanMPKIL3Total);
 
@@ -328,22 +328,14 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 
 
             firstTime = 0;
-			uint32_t index = 0;
 			//assign each core to its corresponding CLOS
             for (const auto &item : outlier)
             {
             	pidTask = std::get<0>(item);
                 uint32_t outlierValue = std::get<1>(item);
 
-                double ipcTask;
-				for (std::tuple<pid_t, double> &tup : v_ipc){
-                     if (std::get<0>(tup) == pidTask){
-                         ipcTask = std::get<1>(tup);
-						 break;
-					 }
-            	}
-
-				index = index + 1;
+				auto it = std::find_if(v_ipc.begin(), v_ipc.end(),[&pidTask](const auto& tuple) {return std::get<0>(tuple) == pidTask;});
+				double ipcTask = std::get<1>(*it);
 
                 if(outlierValue)
                 {
@@ -370,21 +362,12 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 				pidTask = std::get<0>(item);
             	uint32_t outlierValue = std::get<1>(item);
 
-				double ipcTask;
-                for (std::tuple<pid_t, double> &tup : v_ipc){
-                    if (std::get<0>(tup) == pidTask){
-                        ipcTask = std::get<1>(tup);
-                        break;
-                    }
-                }
+				auto it = std::find_if(v_ipc.begin(), v_ipc.end(),[&pidTask](const auto& tuple) {return std::get<0>(tuple) == pidTask;});
+				double ipcTask = std::get<1>(*it);
 
-				double CLOSvalue;
-				for (std::tuple<pid_t, uint64_t> &tup : taskIsInCRCLOS){
-                    if (std::get<0>(tup) == pidTask){
-                        CLOSvalue = std::get<1>(tup);
-                        break;
-                    }
-                }
+				auto it2 = std::find_if(taskIsInCRCLOS.begin(), taskIsInCRCLOS.end(),[&pidTask](const auto& tuple) {return std::get<0>(tuple) == pidTask;});
+				double CLOSvalue = std::get<1>(*it2);
+
 
                 if(outlierValue && (CLOSvalue == 1))
                 {
