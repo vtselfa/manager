@@ -266,7 +266,14 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 		string name = app["name"] ? app["name"].as<string>() : extract_executable_name(cmd);
 
 		// Dir containing files to copy to rundir
-		string skel = app["skel"] ? app["skel"].as<string>() : "";
+		vector<string> skel = {""};
+		if (app["skel"])
+		{
+			if (app["skel"].IsSequence())
+				skel = app["skel"].as<vector<string>>();
+			else
+				skel = {app["skel"].as<string>()};
+		}
 
 		// Stdin/out/err redirection
 		string output = app["stdout"] ? app["stdout"].as<string>() : "out";

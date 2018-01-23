@@ -31,7 +31,7 @@ class Task
 	const std::string out;         // Stdout redirection
 	const std::string in;          // Stdin redirection
 	const std::string err;         // Stderr redirection
-	const std::string skel;        // Directory containing files and folders to copy to rundir
+	const std::vector<std::string> skel;        // Directories containing files and folders to copy to rundir
 	const uint64_t max_instr;      // Max number of instructions to execute
 	const uint32_t max_restarts;   // Maximum number of times this application is gonna be restarted after reaching the instruction limit or finishing
 	const bool batch;              // Batch tasks do not need to be completed in order to finish the execution
@@ -48,7 +48,7 @@ class Task
 	Task() = delete;
 	Task(const std::string &_name, const std::string &_cmd, uint32_t _initial_clos,
 			const std::vector<uint32_t> &_cpus, const std::string &_out, const std::string &_in,
-			const std::string &_err, const std::string &_skel, uint64_t _max_instr,
+			const std::string &_err, const std::vector<std::string> &_skel, uint64_t _max_instr,
 			uint32_t _max_restarts, bool _batch) :
 		id(ID++), name(_name), cmd(_cmd),
 		initial_clos(_initial_clos),

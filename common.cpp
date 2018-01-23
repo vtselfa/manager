@@ -79,8 +79,23 @@ void dir_copy(const std::string &source, const std::string &dest)
 		throw_with_trace(std::runtime_error("Source directory " + source + " does not exist or is not a directory"));
 	if (fs::exists(dest))
 		throw_with_trace(std::runtime_error("Destination directory " + dest + " already exists"));
+
+	// Create dest
 	if (!fs::create_directories(dest))
 		throw_with_trace(std::runtime_error("Cannot create destination directory " + dest));
+
+	dir_copy_contents(source, dest);
+}
+
+
+void dir_copy_contents(const std::string &source, const std::string &dest)
+{
+	namespace fs = boost::filesystem;
+
+	if (!fs::exists(source) || !fs::is_directory(source))
+		throw_with_trace(std::runtime_error("Source directory " + source + " does not exist or is not a directory"));
+	if (!fs::exists(dest))
+		throw_with_trace(std::runtime_error("Destination directory " + dest + " does not exist"));
 
 	typedef fs::recursive_directory_iterator RDIter;
 	for (auto it = RDIter(source), end = RDIter(); it != end; ++it)

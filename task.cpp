@@ -58,12 +58,12 @@ const task_ptr_t& tasks_find(const tasklist_t &tasklist, uint32_t id)
 
 void task_create_rundir(const Task &task)
 {
-	// Create rundir, either empty or with the files from the skel dir
-	if (task.skel != "")
-		dir_copy(task.skel, task.rundir);
-	else
-		if (!fs::create_directories(task.rundir))
-			throw_with_trace(std::runtime_error("Could not create rundir directory " + task.rundir));
+	if (!fs::create_directories(task.rundir))
+		throw_with_trace(std::runtime_error("Could not create rundir directory " + task.rundir));
+
+	// Copy to the rundir the contents of all the skel dirs
+	for (const auto &skel : task.skel)
+		dir_copy_contents(skel, task.rundir);
 }
 
 
