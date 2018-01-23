@@ -258,6 +258,137 @@ applications:
       cmd: /home/benchmarks/spec2006/483.xalancbmk/xalancbmk_base.i386 -v t5.xml xalanc.xsl
       stdout: /dev/null # Fuck you
 
+  cpu_spec_2017:
+    500.perlbench_r: &perlbench_r
+      name: perlbench_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/500.perlbench_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/500.perlbench_r/data/all/input]
+      cmd: bash -c 'export SPECPERLLIB=/home/viselol/benchmarks/spec2017/bin/lib:/home/viselol/benchmarks/spec2017/bin; \
+                    /home/benchmarks/spec2017/benchspec/CPU/500.perlbench_r/exe/perlbench_r_base.InitialTest-m64 -I./lib checkspam.pl 2500 5 25 11 150 1 1 1 1; \
+                    /home/benchmarks/spec2017/benchspec/CPU/500.perlbench_r/exe/perlbench_r_base.InitialTest-m64 -I./lib diffmail.pl 4 800 10 17 19 300; \
+                    /home/benchmarks/spec2017/benchspec/CPU/500.perlbench_r/exe/perlbench_r_base.InitialTest-m64 -I./lib splitmail.pl 6400 12 26 16 100 0'
+
+    502.gcc_r: &gcc_r
+      name: gcc_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/data/refrate/input]
+      cmd: bash -c '/home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/exe/cpugcc_r_base.InitialTest-m64 gcc-pp.c -O3 -finline-limit=0 -fif-conversion -fif-conversion2 -o gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.s; \
+                    /home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/exe/cpugcc_r_base.InitialTest-m64 gcc-pp.c -O2 -finline-limit=36000 -fpic -o gcc-pp.opts-O2_-finline-limit_36000_-fpic.s; \
+                    /home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/exe/cpugcc_r_base.InitialTest-m64 gcc-smaller.c -O3 -fipa-pta -o gcc-smaller.opts-O3_-fipa-pta.s; \
+                    /home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/exe/cpugcc_r_base.InitialTest-m64 ref32.c -O5 -o ref32.opts-O5.s; \
+                    /home/benchmarks/spec2017/benchspec/CPU/502.gcc_r/exe/cpugcc_r_base.InitialTest-m64 ref32.c -O3 -fselective-scheduling -fselective-scheduling2 -o ref32.opts-O3_-fselective-scheduling_-fselective-scheduling2.s'
+
+    503.bwaves_r: &bwaves_r
+      name: bwaves_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/503.bwaves_r/data/refrate/input]
+      cmd: bash -c '/home/benchmarks/spec2017/benchspec/CPU/503.bwaves_r/exe/bwaves_r_base.InitialTest-m64 <bwaves_1.in; \
+                    /home/benchmarks/spec2017/benchspec/CPU/503.bwaves_r/exe/bwaves_r_base.InitialTest-m64 <bwaves_2.in; \
+                    /home/benchmarks/spec2017/benchspec/CPU/503.bwaves_r/exe/bwaves_r_base.InitialTest-m64 <bwaves_3.in; \
+                    /home/benchmarks/spec2017/benchspec/CPU/503.bwaves_r/exe/bwaves_r_base.InitialTest-m64 <bwaves_4.in'
+
+    505.mcf_r: &mcf_r
+      name: mcf_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/505.mcf_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/505.mcf_r/exe/mcf_r_base.InitialTest-m64 inp.in
+
+    507.cactuBSSN_r: &cactuBSSN_r
+      name: cactuBSSN_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/507.cactuBSSN_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/507.cactuBSSN_r/exe/cactusBSSN_r_base.InitialTest-m64 spec_ref.par
+
+    508.namd_r: &namd_r
+      name: namd_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/508.namd_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/508.namd_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/508.namd_r/exe/namd_r_base.InitialTest-m64 --input apoa1.input --output apoa1.ref.output --iterations 65
+
+    510.parest_r: &parest_r
+      name: parest_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/510.parest_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/510.parest_r/exe/parest_r_base.InitialTest-m64 ref.prm
+
+    511.povray_r: &povray_r
+      name: povray_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/511.povray_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/511.povray_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/511.povray_r/exe/povray_r_base.InitialTest-m64 SPEC-benchmark-ref.ini
+
+    519.lbm_r: &lbm_r
+      name: lbm_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/519.lbm_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/519.lbm_r/exe/lbm_r_base.InitialTest-m64 3000 reference.dat 0 0 100_100_130_ldc.of
+
+    520.omnetpp_r: &omnetpp_r
+      name: omnetpp_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/520.omnetpp_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/520.omnetpp_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/520.omnetpp_r/exe/omnetpp_r_base.InitialTest-m64 -c General -r 0
+
+    521.wrf_r: &wrf_r
+      name: wrf_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/521.wrf_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/521.wrf_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/521.wrf_r/exe/wrf_r_base.InitialTest-m64
+
+    523.xalancbmk_r: &xalancbmk_r
+      name: xalancbmk_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/523.xalancbmk_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/523.xalancbmk_r/exe/cpuxalan_r_base.InitialTest-m64 -v t5.xml xalanc.xsl
+
+    525.x264_r: &x264_r
+      name: x264_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/525.x264_r/data/refrate/input]
+      cmd: bash -c '/home/benchmarks/spec2017/benchspec/CPU/525.x264_r/exe/x264_r_base.InitialTest-m64 --pass 1 --stats x264_stats.log --bitrate 1000 --frames 1000 -o BuckBunny_New.264 BuckBunny.yuv 1280x720; \
+                    /home/benchmarks/spec2017/benchspec/CPU/525.x264_r/exe/x264_r_base.InitialTest-m64 --pass 2 --stats x264_stats.log --bitrate 1000 --dumpyuv 200 --frames 1000 -o BuckBunny_New.264 BuckBunny.yuv 1280x720; \
+                    /home/benchmarks/spec2017/benchspec/CPU/525.x264_r/exe/x264_r_base.InitialTest-m64 --seek 500 --dumpyuv 200 --frames 1250 -o BuckBunny_New.264 BuckBunny.yuv 1280x720'
+
+    526.blender_r: &blender_r
+      name: blender_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/526.blender_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/526.blender_r/exe/blender_r_base.InitialTest-m64 sh3_no_char.blend --render-output sh3_no_char_ --threads 1 -b -F RAWTGA -s 849 -e 849 -a
+
+    527.cam4_r: &cam4_r
+      name: cam4_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/527.cam4_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/527.cam4_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/527.cam4_r/exe/cam4_r_base.InitialTest-m64
+
+    531.deepsjeng_r: &deepsjeng_r
+      name: deepsjeng_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/531.deepsjeng_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/531.deepsjeng_r/exe/deepsjeng_r_base.InitialTest-m64 ref.txt
+
+    538.imagick_r: &imagick_r
+      name: imagick_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/538.imagick_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/538.imagick_r/exe/imagick_r_base.InitialTest-m64 -limit disk 0 refrate_input.tga -edge 41 -resample 181% -emboss 31 -colorspace YUV -mean-shift 19x19+15% -resize 30% refrate_output.tga
+
+    541.leela_r: &leela_r
+      name: leela_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/541.leela_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/541.leela_r/exe/leela_r_base.InitialTest-m64 ref.sgf
+
+    544.nab_r: &nab_r
+      name: nab_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/544.nab_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/544.nab_r/exe/nab_r_base.InitialTest-m64 1am0 1122214447 122
+
+    548.exchange2_r: &exchange2_r
+      name: exchange2_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/548.exchange2_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/548.exchange2_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/548.exchange2_r/exe/exchange2_r_base.InitialTest-m64 6
+
+    549.fotonik3d_r: &fotonik3d_r
+      name: fotonik3d_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/549.fotonik3d_r/data/refrate/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/549.fotonik3d_r/exe/fotonik3d_r_base.InitialTest-m64
+
+    554.roms_r: &roms_r
+      name: roms_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/554.roms_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/554.roms_r/data/all/input]
+      cmd: /home/benchmarks/spec2017/benchspec/CPU/554.roms_r/exe/roms_r_base.InitialTest-m64
+      stdin: ocean_benchmark2.in.x
+
+    557.xz_r: &xz_r
+      name: xz_r
+      skel: [/home/benchmarks/spec2017/benchspec/CPU/557.xz_r/data/refrate/input, /home/benchmarks/spec2017/benchspec/CPU/557.xz_r/data/all/input]
+      cmd: bash -c '/home/benchmarks/spec2017/benchspec/CPU/557.xz_r/exe/xz_r_base.InitialTest-m64 cld.tar.xz 160 19cf30ae51eddcbefda78dd06014b4b96281456e078ca7c13e1c0c9e6aaea8dff3efb4ad6b0456697718cede6bd5454852652806a657bb56e07d61128434b474 59796407 61004416 6; \
+                    /home/benchmarks/spec2017/benchspec/CPU/557.xz_r/exe/xz_r_base.InitialTest-m64 cpu2006docs.tar.xz 250 055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae 23047774 23513385 6e; \
+                    /home/benchmarks/spec2017/benchspec/CPU/557.xz_r/exe/xz_r_base.InitialTest-m64 input.combined.xz 250 a841f68f38572a49d86226b7ff5baeb31bd19dc637a922a972b2e6d1257a890f6a544ecab967c313e370478c74f760eb229d4eef8a8d2836d233d3e9dd1430bf 40401484 41217675 7'
+
 
   parsec3:
     <%text>
