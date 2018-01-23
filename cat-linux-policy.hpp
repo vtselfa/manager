@@ -4,6 +4,14 @@
 #include "cat-linux.hpp"
 
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/max.hpp>
+#include <boost/accumulators/statistics/mean.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/rolling_window.hpp>
+#include <boost/accumulators/statistics/rolling_variance.hpp>
+
+
 namespace cat
 {
 
@@ -11,7 +19,7 @@ namespace cat
 namespace policy
 {
 
-
+namespace acc = boost::accumulators;
 
 // No partition policy
 class NoPart: public Base
@@ -53,6 +61,7 @@ class CriticalAlone: public Base
     double ipc_NCR_prev = 0;
 
     double mpkiL3Mean = 0;
+	double stdmpkiL3Mean = 0;
 
     bool firstTime = true;
 
@@ -60,10 +69,23 @@ class CriticalAlone: public Base
     uint64_t idle_count = IDLE_INTERVALS;
     bool idle = false;
 
+	// Define accumulators
+	typedef acc::accumulator_set<
+		double, acc::stats<
+			acc::tag::rolling_mean,
+			acc::tag::rolling_variance
+		>
+	>
+	ca_accum_t;
 
-    //vector to store if core is assigned to critical CLOS
+	ca_accum_t macc;
+
+    //vector to store if task is assigned to critical CLOS
 	typedef std::tuple<pid_t, uint64_t> pair_t;
     std::vector<pair_t> taskIsInCRCLOS;
+
+	// number of times a task has been critical
+	std::map<pid_t,uint64_t> frequencyCritical;
 
     public:
 
@@ -78,12 +100,17 @@ class CriticalAlone: public Base
 
 	//typedef std::tuple<pid_t, uint64_t> pair_t
 
-    virtual ~CriticalAlone() = default;
+    CriticalAlone(uint64_t _every, uint64_t _firstInterval) : every(_every), firstInterval(_firstInterval), macc(acc::tag::rolling_window::window_size = 10u) {}
 
-    CriticalAlone(uint64_t _every, uint64_t _firstInterval) : every(_every), firstInterval(_firstInterval){}
+    virtual ~CriticalAlone() = default;
 
     //configure CAT
     void reset_configuration(const tasklist_t &);
+
+	// calculate median of vector of tuples
+	typedef std::tuple<pid_t, double> pairD_t;
+	double medianV(std::vector<pairD_t> &vec);
+
 
     // metodo apply
     virtual void apply(uint64_t, const tasklist_t &) override;

@@ -26,7 +26,6 @@ namespace policy
 namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
-
 // No Part Policy
 void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
 {
@@ -123,6 +122,22 @@ void CriticalAlone::reset_configuration(const tasklist_t &tasklist)
     LOGINF("Reset performed. Original configuration restored");
 }
 
+double CriticalAlone::medianV(std::vector<pairD_t> &vec)
+{
+	double med;
+    size_t size = vec.size();
+
+    if (size  % 2 == 0)
+    {
+    	med = (std::get<1>(vec[size/2 - 1]) + std::get<1>(vec[size/2])) / 2;
+    }
+    else
+    {
+    	med = std::get<1>(vec[size/2]);
+    }
+	return med;
+}
+
 void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 {
     LOGINF("Current_interval = {}"_format(current_interval));
@@ -131,18 +146,19 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
         return;
 
     // Define accumulators
-    acc::accumulator_set <uint32_t, acc::stats<acc::tag::rolling_mean>> macc(acc::tag::rolling_window::window_size = 10u);
-    acc::accumulator_set<double, acc::stats<acc::tag::variance>> accum;
+    //acc::accumulator_set <double, acc::stats<acc::tag::rolling_mean>> macc(acc::tag::rolling_window::window_size = 10u);
+    //acc::accumulator_set<double, acc::stats<acc::tag::variance>> accum;
 
     // (Core, MPKI-L3) tuple
-    auto v = std::vector<pair_t>();
-    auto v_ipc = std::vector<pair_t>();
-    auto outlier = std::vector<pair_t>();
+	auto v = std::vector<pairD_t>();
+    auto v_ipc = std::vector<pairD_t>();
 
-    double ipcTotal = 0;
-    double ipc_CR = 0;
+	auto outlier = std::vector<pair_t>();
+
+    double ipcTotal = 0, mpkiL3Total=0;
+    //double missesL3Total = 0, instsTotal = 0;
+	double ipc_CR = 0;
     double ipc_NCR = 0;
-    double mpkiL3Total = 0;
 
     uint64_t newMaskNonCr, newMaskCr;
 
@@ -162,36 +178,44 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 		// stats per interval
 		uint64_t l3_miss = task.stats.last("mem_load_uops_retired.l3_miss");
 		uint64_t inst = task.stats.last("instructions");
-
 		double ipc = task.stats.last("ipc");
 
-		// calculate MPKI-L3 of task
-        double kInst = inst / 1000;
-        double MPKIL3 = l3_miss / kInst;
+		double MPKIL3 = (double)(l3_miss*1000) / (double)inst;
 
-        //LOGINF("Task {} has {} MPKI in L3"_format(taskName,MPKIL3));
+        LOGINF("Task {} has {} MPKI in L3"_format(taskName,MPKIL3));
         v.push_back(std::make_pair(taskPID, MPKIL3));
         v_ipc.push_back(std::make_pair(taskPID, ipc));
 
         ipcTotal += ipc;
-        mpkiL3Total += MPKIL3;
+		mpkiL3Total += MPKIL3;
 	}
 
-	LOGINF("Total IPC of interval {} = {:.2f}"_format(current_interval, ipcTotal));
+	//LOGINF("Total IPC of interval {} = {:.2f}"_format(current_interval, ipcTotal));
 
-    // calculate rolling mean of mean interval
-    double meanMPKIL3Total = mpkiL3Total / tasklist.size();
-    macc(meanMPKIL3Total);
-    mpkiL3Mean = acc::rolling_mean(macc);
-    LOGINF("Rolling mean of MPKI-L3 at interval {} = {:.2f}"_format(current_interval, mpkiL3Mean));
+    // calculate total MPKIL3 mean of interval
+	double meanMPKIL3Total = mpkiL3Total / tasklist.size();
+	LOGINF("Mean MPKIL3Total (/{}) = {}"_format(tasklist.size(), meanMPKIL3Total));
 
     // PROCESS DATA
     if (current_interval >= firstInterval)
     {
-        //calculate std and limit
-        accum(mpkiL3Mean);
-        double stdMPKIL3mean = std::sqrt(acc::variance(accum));
-        double limit_outlier = mpkiL3Mean + 2*stdMPKIL3mean;
+		// MEAN AND STD LIMIT OUTLIER CALCULATION
+
+		//accumulate value
+		macc(meanMPKIL3Total);
+
+		//calculate rolling mean
+		mpkiL3Mean = acc::rolling_mean(macc);
+     	LOGINF("Rolling mean of MPKI-L3 at interval {} = {}"_format(current_interval, mpkiL3Mean));
+
+		//calculate rolling std and limit of outlier
+		stdmpkiL3Mean = std::sqrt(acc::rolling_variance(macc));
+		LOGINF("stdMPKIL3mean = {}"_format(stdmpkiL3Mean));
+
+		//calculate limit outlier
+		double limit_outlier = mpkiL3Mean + 3*stdmpkiL3Mean;
+		LOGINF("limit_outlier = {}"_format(limit_outlier));
+
 
 		pid_t pidTask;
 		//Check if MPKI-L3 of each APP is 2 stds o more higher than the mean MPKI-L3
@@ -199,16 +223,57 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
         {
             double MPKIL3Task = std::get<1>(item);
             pidTask = std::get<0>(item);
+			int freqCritical = -1;
+			double fractionCritical = 0;
+
+			if(current_interval > firstInterval)
+			{
+				//Search for mi tuple and update the value
+				auto it = frequencyCritical.find(pidTask);
+				if(it != frequencyCritical.end())
+				{
+					freqCritical = it->second;
+				}
+				else
+				{
+					LOGINF("TASK RESTARTED --> INCLUDE IT AGAIN IN frequencyCritical");
+					frequencyCritical[pidTask] = 0;
+					freqCritical = 0;
+				}
+				assert(freqCritical>=0);
+				fractionCritical = freqCritical / (double)(current_interval-firstInterval);
+				LOGINF("XXX {} / {} = {}"_format(freqCritical,(current_interval-firstInterval),fractionCritical));
+			}
+
 
             if (MPKIL3Task >= limit_outlier)
             {
-                LOGINF("The MPKI-L3 of task with pid {} is an outlier, since it is higher than {}"_format(pidTask,limit_outlier));
+                LOGINF("The MPKI-L3 of task with pid {} is an outlier, since {} >= {}"_format(pidTask,MPKIL3Task,limit_outlier));
                 outlier.push_back(std::make_pair(pidTask,1));
                 critical_apps = critical_apps + 1;
+
+				// increment frequency critical
+				frequencyCritical[pidTask]++;
             }
-            else
+            else if(MPKIL3Task < limit_outlier && fractionCritical>=0.5)
+			{
+				LOGINF("The MPKI-L3 of task with pid {} is NOT an outlier, since {} < {}"_format(pidTask,MPKIL3Task,limit_outlier));
+				LOGINF("Fraction critical of {} is {} --> CRITICAL"_format(pidTask,fractionCritical));
+
+				outlier.push_back(std::make_pair(pidTask,1));
+                critical_apps = critical_apps + 1;
+			}
+			else
             {
+				// it's not a critical app
+				LOGINF("The MPKI-L3 of task with pid {} is NOT an outlier, since {} < {}"_format(pidTask,MPKIL3Task,limit_outlier));
                 outlier.push_back(std::make_pair(pidTask,0));
+
+				// initialize counter if it's the first interval
+				if(current_interval == firstInterval)
+				{
+					frequencyCritical[pidTask] = 0;
+				}
             }
         }
 
@@ -269,7 +334,15 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
             {
             	pidTask = std::get<0>(item);
                 uint32_t outlierValue = std::get<1>(item);
-                double ipcTask = std::get<1>(v_ipc[index]);
+
+                double ipcTask;
+				for (std::tuple<pid_t, double> &tup : v_ipc){
+                     if (std::get<0>(tup) == pidTask){
+                         ipcTask = std::get<1>(tup);
+						 break;
+					 }
+            	}
+
 				index = index + 1;
 
                 if(outlierValue)
@@ -291,11 +364,27 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 	else
 	{
 		//check if there is a new critical app
-            for (uint32_t i = 0; i < 8; i++)
+            for (const auto &item : outlier)
             {
-                uint32_t outlierValue = std::get<1>(outlier[i]);
-                uint32_t CLOSvalue = std::get<1>(taskIsInCRCLOS[i]);
-                double ipcTask = std::get<1>(v_ipc[i]);
+
+				pidTask = std::get<0>(item);
+            	uint32_t outlierValue = std::get<1>(item);
+
+				double ipcTask;
+                for (std::tuple<pid_t, double> &tup : v_ipc){
+                    if (std::get<0>(tup) == pidTask){
+                        ipcTask = std::get<1>(tup);
+                        break;
+                    }
+                }
+
+				double CLOSvalue;
+				for (std::tuple<pid_t, uint64_t> &tup : taskIsInCRCLOS){
+                    if (std::get<0>(tup) == pidTask){
+                        CLOSvalue = std::get<1>(tup);
+                        break;
+                    }
+                }
 
                 if(outlierValue && (CLOSvalue == 1))
                 {
@@ -812,7 +901,6 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 	else
 	{
 		assert(num_clusters == 0);
-
 		LOGDEB("Try to find the optimal number of clusters...");
 		KMeans::clusterize_optimally(max_clusters, data, clusters, 100, eval_clusters);
 	}
