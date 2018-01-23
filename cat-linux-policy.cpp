@@ -199,23 +199,49 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
     // PROCESS DATA
     if (current_interval >= firstInterval)
     {
-		// MEAN AND STD LIMIT OUTLIER CALCULATION
+		// MAD = Median Absolute Value
+		// 1. Sort in ascending order vector v
+		std::sort(v.begin(), v.end(), [](const std::tuple<pid_t, double> &left, const std::tuple<pid_t, double> &right) {
+   			return std::get<1>(left) < std::get<1>(right);
+		});
 
-		//accumulate value
-		macc(meanMPKIL3Total);
+		// 2. Find the median
+		double Mj = medianV(v);
 
-		//calculate rolling mean
-		mpkiL3Mean = acc::rolling_mean(macc);
-     	LOGINF("Rolling mean of MPKI-L3 at interval {} = {}"_format(current_interval, mpkiL3Mean));
+		// 3. Subtract from each value the median
+		auto v_sub = v;
+		for (std::tuple<pid_t, double> &tup : v_sub)
+		{
+    		std::get<1>(tup) = fabs (std::get<1>(tup) - Mj);
+		}
 
-		//calculate rolling std and limit of outlier
-		stdmpkiL3Mean = std::sqrt(acc::rolling_variance(macc));
-		LOGINF("stdMPKIL3mean = {}"_format(stdmpkiL3Mean));
+		// 4. Sort in ascending order the new set of values
+		std::sort(v_sub.begin(), v_sub.end(), [](const std::tuple<pid_t, double> &left, const std::tuple<pid_t, double> &right) {
+    		return std::get<1>(left) < std::get<1>(right);
+		});
 
-		//calculate limit outlier
-		double limit_outlier = mpkiL3Mean + 3*stdmpkiL3Mean;
+		// 5. Find the median
+		double Mi = medianV(v_sub);
+
+		// 6. Multiply median by b (assume normal distribution)
+		double MAD = Mi * 1.4826;
+
+		// 7. Calculate limit_outlier
+		double limit_outlier = Mj + 3*MAD;
 		LOGINF("limit_outlier = {}"_format(limit_outlier));
 
+		// MEAN AND STD LIMIT OUTLIER CALCULATION
+		//accumulate value
+		//macc(meanMPKIL3Total);
+		//calculate rolling mean
+		//mpkiL3Mean = acc::rolling_mean(macc);
+     	//LOGINF("Rolling mean of MPKI-L3 at interval {} = {}"_format(current_interval, mpkiL3Mean));
+		//calculate rolling std and limit of outlier
+		//stdmpkiL3Mean = std::sqrt(acc::rolling_variance(macc));
+		//LOGINF("stdMPKIL3mean = {}"_format(stdmpkiL3Mean));
+		//calculate limit outlier
+		//double limit_outlier = mpkiL3Mean + 3*stdmpkiL3Mean;
+		//LOGINF("limit_outlier = {}"_format(limit_outlier));
 
 		pid_t pidTask;
 		//Check if MPKI-L3 of each APP is 2 stds o more higher than the mean MPKI-L3
