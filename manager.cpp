@@ -369,8 +369,8 @@ int main(int argc, char *argv[])
 	std::setlocale(LC_ALL, "");
 
 	// Default log conf
-	const string min_clog = "war";
-	const string min_flog = "dbg";
+	const string min_clog = "inf";
+	const string min_flog = "inf";
 
 	// Options that can be setted using the config file
 	CmdOptions options;

@@ -62,8 +62,6 @@ fi
 
 WORKLOADS=$1
 
-
-
 DIR=$(dirname $0)
 
 source ${DIR}/config.bash

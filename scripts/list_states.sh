@@ -5,7 +5,7 @@
 
 
 inputdir=/home/lupones/manager/experiments/$1/criticalAlone/log
-outputdir=/home/lupones/manager/experiments/outputCSVfiles/$1/criticalAlone/AAA-states/
+outputdir=/home/lupones/manager/experiments/$1/criticalAlone/states/
 
 mkdir $outputdir
 

@@ -110,7 +110,9 @@ def plot_metric(workloads, metric, agg, names, input_dirs, output_dir):
     hlines = []
     for n, name in enumerate(names):
         column = "{}:{}".format(name, metric)
-        hlines += [[df[column].median(), {"linestyle": '-.', "color": "D{}".format(n)}]]
+        # LUCIA = change median by mean
+        hlines += [[df[column].mean(), {"linestyle": '-.', "color": "D{}".format(n)}]]
+        #hlines += [[df[column].median(), {"linestyle": '-.', "color": "D{}".format(n)}]]
         hlines += [[df[column].quantile(0.25), {"linestyle": ':', "color": "D{}".format(n)}]]
         hlines += [[df[column].quantile(0.75), {"linestyle": ':', "color": "D{}".format(n)}]]
     print(hlines)
