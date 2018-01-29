@@ -86,6 +86,8 @@ class CATLinux : public CAT
 	/* CAT Linux API */
 	void add_task(uint32_t clos, pid_t pid);
 	void add_tasks(uint32_t clos, const std::vector<pid_t> &pids);
+
+	uint32_t get_clos_of_task(pid_t pid) const;
 };
 
 

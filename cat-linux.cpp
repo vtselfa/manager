@@ -286,3 +286,21 @@ uint32_t CATLinux::get_max_closids() const
 {
 	return CATLinux::info.num_closids;
 }
+
+
+uint32_t CATLinux::get_clos_of_task(pid_t pid) const
+{
+	auto path = fs::path(ROOT);
+	auto tasks = get_tasks(path);
+	if (std::find(tasks.begin(), tasks.end(), std::to_string(pid)) != tasks.end())
+		return 0;
+
+	for (uint32_t i = 1; i < get_max_closids(); i++)
+	{
+		path = fs::path(ROOT) / std::to_string(i);
+		tasks = get_tasks(path);
+		if (std::find(tasks.begin(), tasks.end(), std::to_string(pid)) != tasks.end())
+			return i;
+	}
+	throw_with_trace(std::runtime_error("The PID {} is not in any CLOS, does it exist?"_format(pid)));
+}
