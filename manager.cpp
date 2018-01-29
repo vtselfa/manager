@@ -160,7 +160,7 @@ void loop(
 			}
 
 			// Deal with apps that finish or reach the limit
-			task_restart_or_set_done(task, perf, events); // Status can change from (exited | limit_reached) -> done
+			task_restart_or_set_done(task, catpol->get_cat(), perf, events); // Status can change from (exited | limit_reached) -> done
 
 			// If it's done print total stats
 			if (task.get_status() == Task::Status::done)

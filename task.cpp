@@ -330,7 +330,7 @@ std::vector<uint32_t> tasks_cores_used(const tasklist_t &tasklist)
 }
 
 
-void task_restart_or_set_done(Task &task, Perf &perf, const std::vector<std::string> &events)
+void task_restart_or_set_done(Task &task, cat_ptr_t cat, Perf &perf, const std::vector<std::string> &events)
 {
 	auto status = task.get_status();
 	if (status == Task::Status::limit_reached || status == Task::Status::exited)
@@ -349,7 +349,19 @@ void task_restart_or_set_done(Task &task, Perf &perf, const std::vector<std::str
 		// Restart task if the maximum number of restarts has not been reached
 		if (task.num_restarts < task.max_restarts)
 		{
-			task_restart(task);
+			auto cat_linux = std::dynamic_pointer_cast<CATLinux>(cat);
+			if (cat_linux)
+			{
+				auto clos = cat_linux->get_clos_of_task(task.pid);
+				LOGDEB("Task {}:{} was in CLOS {}, ensure it still is after restart"_format(task.id, task.name, clos));
+				assert(clos < cat->get_max_closids() && clos >= 0);
+				task_restart(task);
+				cat_linux->add_task(clos, task.pid);
+			}
+			else
+			{
+				task_restart(task);
+			}
 			perf.setup_events(task.pid, events);
 		}
 		else

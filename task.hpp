@@ -92,7 +92,7 @@ bool task_exited(const Task &task); // Test if the task has exited
 
 // If the limit has been reached, kill the application.
 // If the limit of restarts has not been reached, restart the application. If the limit of restarts was reached, mark the application as done.
-void task_restart_or_set_done(Task &task, Perf &perf, const std::vector<std::string> &events);
+void task_restart_or_set_done(Task &task, cat_ptr_t cat, Perf &perf, const std::vector<std::string> &events);
 
 void task_stats_print_headers(const Task &t, std::ostream &out, const std::string &sep = ",");
 void task_stats_print_interval(const Task &t, uint64_t interval, std::ostream &out, const std::string &sep = ",");
