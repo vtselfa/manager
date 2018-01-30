@@ -143,7 +143,8 @@ std::vector<fs::path> CATLinux::get_clos_dirs() const
 std::vector<std::string> CATLinux::get_tasks(fs::path clos_dir) const
 {
 	assert_dir_exists(clos_dir);
-	std::ifstream f = open_ifstream(clos_dir / "tasks");
+	std::ifstream f;
+	f.open((clos_dir / "tasks").c_str());
 	vector<string> tasks;
 	string task;
 	while (f >> task)
