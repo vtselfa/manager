@@ -25,6 +25,10 @@ namespace policy
 
 namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
+using std::string;
+
+// varaible to assign tasks or cores to CLOS: task / cpu
+const std::string CLOS_ADD = "cpu";
 
 // No Part Policy
 void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
@@ -93,11 +97,22 @@ void NoPart::apply(uint64_t current_interval, const tasklist_t &tasklist)
 void CriticalAlone::reset_configuration(const tasklist_t &tasklist)
 {
     //assign all tasks to CLOS 1
-	for (const auto &task_ptr : tasklist)
-    {
-		const Task &task = *task_ptr;
-        pid_t taskPID = task.pid;
-		get_cat()->add_task(1,taskPID);
+	if(CLOS_ADD == "task")
+	{
+		for (const auto &task_ptr : tasklist)
+    	{
+			const Task &task = *task_ptr;
+        	pid_t taskPID = task.pid;
+			get_cat()->add_task(1,taskPID);
+		}
+	}
+	else
+	{
+		//assign all cores to CLOS 1
+		for (uint32_t c = 0; c < 8; c++)
+    	{
+        	get_cat()->add_cpu(1,c);
+    	}
 	}
 
     //change masks of CLOS to 0xfffff
@@ -174,6 +189,7 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
     	const Task &task = *task_ptr;
         std::string taskName = task.name;
 		pid_t taskPID = task.pid;
+		uint32_t cpu = task.cpus.front();
 
 		// stats per interval
 		uint64_t l3_miss = task.stats.last("mem_load_uops_retired.l3_miss");
@@ -186,6 +202,7 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
         LOGINF("Task {} has {} MPKI in L3"_format(taskName,MPKIL3));
         v.push_back(std::make_pair(taskPID, MPKIL3));
         v_ipc.push_back(std::make_pair(taskPID, ipc));
+		pid_CPU.push_back(std::make_pair(taskPID,cpu));
 
         ipcTotal += ipc;
 		mpkiL3Total += MPKIL3;
@@ -337,18 +354,42 @@ void CriticalAlone::apply(uint64_t current_interval, const tasklist_t &tasklist)
 				auto it = std::find_if(v_ipc.begin(), v_ipc.end(),[&pidTask](const auto& tuple) {return std::get<0>(tuple) == pidTask;});
 				double ipcTask = std::get<1>(*it);
 
+				double cpuTask;
+				if(CLOS_ADD == "cpu")
+				{
+					auto it1 = std::find_if(pid_CPU.begin(), pid_CPU.end(),[&pidTask](const auto& tuple) {return std::get<0>(tuple) == pidTask;});
+                   	cpuTask = std::get<1>(*it1);
+				}
+
                 if(outlierValue)
                 {
-                    get_cat()->add_task(2,pidTask);
+					if(CLOS_ADD == "cpu")
+					{
+						get_cat()->add_cpu(2,cpuTask);
+						LOGINF("Task in cpu {} assigned to CLOS 2"_format(cpuTask));
+					}
+					else
+					{
+                    	get_cat()->add_task(2,pidTask);
+						LOGINF("Task PID {} assigned to CLOS 1"_format(pidTask));
+					}
                     taskIsInCRCLOS.push_back(std::make_pair(pidTask,2));
-                    LOGINF("Task PID {} assigned to CLOS 2"_format(pidTask));
                     ipc_CR += ipcTask;
                 }
                 else
                 {
-                    get_cat()->add_task(1,pidTask);
+					if(CLOS_ADD == "cpu")
+					{
+						get_cat()->add_cpu(1,cpuTask);
+						LOGINF("Task in cpu {} assigned to CLOS 1"_format(cpuTask));
+					}
+					else
+					{
+						get_cat()->add_task(1,pidTask);
+						LOGINF("Task PID {} assigned to CLOS 1"_format(pidTask));
+	                }
+
                     taskIsInCRCLOS.push_back(std::make_pair(pidTask,1));
-                    LOGINF("Task PID {} assigned to CLOS 1"_format(pidTask));
                     ipc_NCR += ipcTask;
                 }
             }

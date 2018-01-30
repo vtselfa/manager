@@ -83,6 +83,7 @@ class CriticalAlone: public Base
     //vector to store if task is assigned to critical CLOS
 	typedef std::tuple<pid_t, uint64_t> pair_t;
     std::vector<pair_t> taskIsInCRCLOS;
+	std::vector<pair_t> pid_CPU;
 
 	// number of times a task has been critical
 	std::map<pid_t,uint64_t> frequencyCritical;
