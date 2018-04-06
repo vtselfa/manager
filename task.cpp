@@ -63,7 +63,8 @@ void task_create_rundir(const Task &task)
 
 	// Copy to the rundir the contents of all the skel dirs
 	for (const auto &skel : task.skel)
-		dir_copy_contents(skel, task.rundir);
+		if (skel != "")
+			dir_copy_contents(skel, task.rundir);
 }
 
 
