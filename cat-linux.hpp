@@ -90,6 +90,7 @@ class CATLinux : public CAT
 	uint32_t get_clos_of_task(pid_t pid) const;
 };
 
+typedef std::shared_ptr<CATLinux> catlinux_ptr_t;
 
 std::map<std::string, CATInfo> cat_read_info();
 

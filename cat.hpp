@@ -19,7 +19,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
+
+typedef uint64_t cbm_t; // Cache Bitmask
+typedef std::vector<cbm_t> cbms_t; // Array of CBMs, there should be one per CLOS
 
 class CAT
 {
@@ -35,7 +39,7 @@ class CAT
 	virtual void init() = 0;
 	virtual void reset() = 0;
 
-	virtual void set_cbm(uint32_t clos, uint64_t cbm) = 0;
+	virtual void set_cbm(uint32_t clos, cbm_t cbm) = 0;
 	virtual void add_cpu(uint32_t clos, uint32_t cpu) = 0;
 
 	virtual uint32_t get_clos(uint32_t cpu) const = 0;

@@ -181,7 +181,7 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 		}
 		else if (distribution == "static")
 		{
-			auto masks = policy["distribution"]["masks"].as<vector<uint32_t>>();
+			auto masks = policy["distribution"]["masks"].as<cbms_t>();
 			distribution_ptr = std::make_shared<cat::policy::Distribute_Static>(masks);
 		}
 		else
@@ -191,6 +191,31 @@ std::shared_ptr<cat::policy::Base> config_read_cat_policy(const YAML::Node &conf
 
 		LOGINF("Using {} CAT policy"_format(kind));
 		return std::make_shared<cat::policy::ClusterAndDistribute>(every, clustering_ptr, distribution_ptr);
+	}
+
+	// Square wave
+	else if (kind == "squarewave")
+	{
+		vector<string> required = {"kind", "waves"};
+		vector<string> allowed  = {};
+
+		config_check_fields(policy, required, allowed);
+
+		// Read waves
+		assert(policy["waves"].IsSequence());
+		typedef cat::policy::SquareWave::Wave wave_t;
+		auto waves = std::vector<wave_t>();
+		required = {"interval", "up", "down"};
+		for (auto node : policy["waves"])
+		{
+			config_check_required_fields(node, required);
+			wave_t wave = wave_t(
+					node["interval"].as<decltype(wave_t::interval)>(),
+					node["up"].as<decltype(wave_t::up)>(),
+					node["down"].as<decltype(wave_t::down)>());
+			waves.push_back(wave);
+		}
+		return std::make_shared<cat::policy::SquareWave>(waves);
 	}
 
 	else

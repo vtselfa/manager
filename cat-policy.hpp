@@ -37,6 +37,13 @@ class Base
 	std::shared_ptr<CAT> get_cat()             { return cat; }
 	const std::shared_ptr<CAT> get_cat() const { return cat; }
 
+	void set_cbms(const cbms_t &cbms)
+	{
+		assert(cat->get_max_closids() >= cbms.size());
+		for(size_t clos = 0; clos < cbms.size(); clos++)
+			get_cat()->set_cbm(clos, cbms[clos]);
+	}
+
 	virtual ~Base() = default;
 
 	// Derived classes should perform their operations here.

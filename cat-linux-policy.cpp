@@ -27,6 +27,38 @@ namespace acc = boost::accumulators;
 using fmt::literals::operator""_format;
 
 
+void tasks_to_closes(catlinux_ptr_t cat, const tasklist_t &tasklist, const clusters_t &clusters)
+{
+	assert(cat->get_max_closids() >= clusters.size());
+
+	for(size_t clos = 0; clos < clusters.size(); clos++)
+	{
+		for (const auto point : clusters[clos].getPoints())
+		{
+			const auto &task = tasks_find(tasklist, point->id);
+			cat->add_task(clos, task->pid);
+		}
+	}
+}
+
+
+// Given a cluster, return a pretty string similar to: "id1:app1, id2:app2"
+std::string cluster_to_tasks(const Cluster &cluster, const tasklist_t &tasklist)
+{
+	std::string task_ids;
+	const auto &points = cluster.getPoints();
+	size_t p = 0;
+	for (const auto &point : points)
+	{
+		const auto &task = tasks_find(tasklist, point->id);
+		task_ids += "{}:{}"_format(task->id, task->name);
+		task_ids += (p == points.size() - 1) ? "" : ", ";
+		p++;
+	}
+	return task_ids;
+}
+
+
 // Assign each task to a cluster
 clusters_t ClusteringBase::apply(const tasklist_t &tasklist)
 {
@@ -170,9 +202,9 @@ clusters_t Cluster_KMeans::apply(const tasklist_t &tasklist)
 }
 
 
-ways_t Distribute_N::apply(const tasklist_t &, const clusters_t &clusters)
+cbms_t Distribute_N::apply(const tasklist_t &, const clusters_t &clusters)
 {
-	ways_t ways(clusters.size(), -1);
+	cbms_t ways(clusters.size(), -1);
 	for (size_t i = 0; i < clusters.size(); i++)
 	{
 		ways[i] <<= ((i + 1) * n);
@@ -184,9 +216,9 @@ ways_t Distribute_N::apply(const tasklist_t &, const clusters_t &clusters)
 }
 
 
-ways_t Distribute_RelFunc::apply(const tasklist_t &, const clusters_t &clusters)
+cbms_t Distribute_RelFunc::apply(const tasklist_t &, const clusters_t &clusters)
 {
-	ways_t cbms;
+	cbms_t cbms;
 	auto values = std::vector<double>();
 	if (invert_metric)
 		LOGDEB("Inverting metric...");
@@ -216,7 +248,17 @@ ways_t Distribute_RelFunc::apply(const tasklist_t &, const clusters_t &clusters)
 }
 
 
-void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &clusters, const ways_t &ways)
+std::shared_ptr<CATLinux> LinuxBase::get_cat()
+{
+	auto ptr =  std::dynamic_pointer_cast<CATLinux>(cat);
+	if (ptr)
+		return ptr;
+	else
+		throw_with_trace(std::runtime_error("Linux CAT implementation required"));
+}
+
+
+void ClusterAndDistribute::show(const tasklist_t &tasklist, const clusters_t &clusters, const cbms_t &ways)
 {
 	assert(clusters.size() == ways.size());
 	for (size_t i = 0; i < ways.size(); i++)
@@ -254,8 +296,40 @@ void ClusterAndDistribute::apply(uint64_t current_interval, const tasklist_t &ta
 	}
 	auto ways = distributing->apply(tasklist, clusters);
 	show(tasklist, clusters, ways);
-	tasks_to_closes(tasklist, clusters);
-	ways_to_closes(ways);
+	tasks_to_closes(get_cat(), tasklist, clusters);
+	set_cbms(ways);
+}
+
+
+void SquareWave::apply(uint64_t current_interval, const tasklist_t &tasklist)
+{
+	clusters_t clusters = clustering.apply(tasklist);
+	assert(clusters.size() <= waves.size());
+
+	// Adjust ways
+	for (uint32_t clos = 0; clos < waves.size(); clos++)
+	{
+		cbm_t cbm = get_cat()->get_cbm(clos);
+		if (current_interval % waves[clos].interval == 0)
+		{
+			if (waves[clos].is_down)
+			{
+				cbm = waves[clos].down;
+			}
+			else
+			{
+				cbm = waves[clos].up;
+			}
+			waves[clos].is_down = !waves[clos].is_down;
+			get_cat()->set_cbm(clos, cbm);
+		}
+		std::string task_str = "";
+		if (clos < clusters.size())
+			task_str = cluster_to_tasks(clusters[clos], tasklist);
+		LOGDEB(fmt::format("{{clos{}: {{cbm: {:#7x}, num_ways: {:2}, tasks: [{}]}}}}", clos, cbm, __builtin_popcount(cbm), task_str));
+	}
+
+	tasks_to_closes(this->get_cat(), tasklist, clusters);
 }
 
 }} // cat::policy
