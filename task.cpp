@@ -188,6 +188,8 @@ void task_execute(Task &task)
 		// Child
 		case 0:
 		{
+			setsid();
+
 			// Set CPU affinity
 			try
 			{
@@ -288,9 +290,8 @@ void task_kill(Task &task)
 		// Kill it
 		else
 		{
-			if (kill(pid, SIGKILL) < 0)
+			if (kill(-pid, SIGKILL) < 0)
 				throw_with_trace(std::runtime_error("Could not SIGKILL command '" + task.cmd + "' with pid " + to_string(pid) + ": " + strerror(errno)));
-			waitpid(pid, NULL, 0); // Wait until it exits...
 		}
 		task.pid = 0;
 	}

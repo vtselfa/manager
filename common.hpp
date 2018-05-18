@@ -18,6 +18,8 @@ void drop_privileges();
 void set_cpu_affinity(std::vector<uint32_t> cpus, pid_t pid=0);
 void assert_dir_exists(const boost::filesystem::path &dir);
 
+void pid_get_children_rec(const pid_t pid, std::vector<pid_t> &children);
+
 
 // Measure the time the passed callable object consumes
 template<typename TimeT = std::chrono::milliseconds>

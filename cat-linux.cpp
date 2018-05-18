@@ -5,6 +5,7 @@
 
 #include "cat-linux.hpp"
 #include "common.hpp"
+#include "log.hpp"
 #include "throw-with-trace.hpp"
 
 
@@ -169,6 +170,10 @@ void CATLinux::add_task(fs::path clos_dir, pid_t pid)
 	{
 		std::ofstream f = open_ofstream(clos_dir / "tasks");
 		f << pid << std::endl;
+		auto children = std::vector<pid_t>();
+		pid_get_children_rec(pid, children);
+		for (const auto &child_pid : children)
+			f << child_pid << std::endl;
 	}
 	catch(const std::system_error &e)
 	{

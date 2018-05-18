@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <clocale>
 #include <iostream>
+#include <csignal>
 #include <thread>
 
 #include <boost/filesystem.hpp>
@@ -43,6 +44,8 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf);
 [[noreturn]] void clean_and_die(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf);
 std::string program_options_to_string(const std::vector<po::option>& raw);
 void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, const uint64_t interval, const uint64_t time_int_us, int64_t &adj_delay_us);
+void herod_the_great();
+void sigint_handler(int signum);
 
 
 CAT_ptr_t cat_setup(const string &kind, const vector<Cos> &coslist)
@@ -158,18 +161,21 @@ void loop(
 				if (task.completed == 1)
 					task_stats_print_total(task, interval, ucompl_out);
 			}
-
-			// Deal with apps that finish or reach the limit
-			task_restart_or_set_done(task, catpol->get_cat(), perf, events); // Status can change from (exited | limit_reached) -> done
-
-			// If it's done print total stats
-			if (task.get_status() == Task::Status::done)
-				task_stats_print_total(task, interval, total_out);
 		}
 
 		// All the tasks have reached their limit -> finish execution
 		if (all_completed)
 			break;
+
+		for (const auto &task_ptr : schedlist)
+		{
+			// Deal with apps that finish or reach the limit
+			task_restart_or_set_done(*task_ptr, catpol->get_cat(), perf, events); // Status can change from (exited | limit_reached) -> done
+
+			// If it's done print total stats
+			if (task_ptr->get_status() == Task::Status::done)
+				task_stats_print_total(*task_ptr, interval, total_out);
+		}
 
 		// Remove tasks that are done from runlist
 		runlist.erase(std::remove_if(runlist.begin(), runlist.end(), [](const auto &task_ptr) { return task_ptr->get_status() == Task::Status::done; }), runlist.end());
@@ -229,6 +235,7 @@ void adjust_time(const time_point_t &start_int, const time_point_t &start_glob, 
 // Leave the machine in a consistent state
 void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 {
+	LOGINF("Resetting CAT and performance counters...");
 	cat->reset();
 	perf.clean();
 
@@ -236,22 +243,11 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 	LOGINF("Dropping privileges...");
 	drop_privileges();
 
-	LOGINF("Killing tasks...");
+	LOGINF("Deleting run dirs...");
 	try
 	{
 		for (const auto &task : tasklist)
-			if (task->get_status() != Task::Status::done)
-				task_resume(*task);
-		sleep_for(chr::milliseconds(1000));
-		for (const auto &task : tasklist)
-		{
-			if (task->get_status() != Task::Status::done)
-			{
-				assert(task->get_status() == Task::Status::runnable);
-				task_kill(*task);
-			}
 			fs::remove_all(task->rundir);
-		}
 	}
 	catch(const std::exception &e)
 	{
@@ -261,6 +257,9 @@ void clean(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 		else
 			LOGERR(e.what());
 	}
+
+	LOGINF("Killing children...");
+	herod_the_great();
 }
 
 
@@ -287,18 +286,8 @@ void clean_and_die(tasklist_t &tasklist, CAT_ptr_t cat, Perf &perf)
 		LOGERR("Could not clean the performance counters: " << e.what());
 	}
 
-	for (const auto &task : tasklist)
-	{
-		try
-		{
-			if (task->pid > 0)
-				task_kill(*task);
-		}
-		catch (const std::exception &e)
-		{
-			LOGERR(e.what());
-		}
-	}
+	// Kill children
+	herod_the_great();
 
 	LOGFAT("Exit with error");
 }
@@ -361,9 +350,33 @@ void open_output_streams(
 }
 
 
+// He is good with spoiled children
+void herod_the_great()
+{
+	auto children = std::vector<pid_t>();
+	pid_get_children_rec(getpid(), children);
+	if (children.empty())
+		return;
+
+	LOGDEB("Herod the Gread has killed all the children he found: {}"_format(iterable_to_string(children.begin(), children.end(), [](const auto &t) {return "{}"_format(t);}, ", ")));
+	for (const auto &child_pid : children)
+		if (kill(child_pid, SIGKILL) < 0)
+			LOGERR("Could not SIGKILL pid '{}', is he Jesus?: {}"_format(child_pid, strerror(errno)));
+}
+
+
+void sigint_handler(int signum)
+{
+	LOGWAR("SIGINT received, killing all child preocesses");
+	herod_the_great();
+	exit(signum);
+}
+
+
 int main(int argc, char *argv[])
 {
 	srand(time(NULL));
+	signal(SIGINT, sigint_handler);
 
 	// Set the locale to the one defined in the corresponding enviroment variable
 	std::setlocale(LC_ALL, "");

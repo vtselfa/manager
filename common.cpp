@@ -167,3 +167,16 @@ void set_cpu_affinity(std::vector<uint32_t> cpus, pid_t pid)
 	if (sched_setaffinity(pid, sizeof(mask), &mask) < 0)
 		throw_with_trace(std::runtime_error("Could not set CPU affinity: " + std::string(strerror(errno))));
 }
+
+
+void pid_get_children_rec(const pid_t pid, std::vector<pid_t> &children)
+{
+	std::ifstream proc_children;
+	proc_children.open("/proc/{}/task/{}/children"_format(pid, pid));
+	pid_t child_pid = -1;
+	while(proc_children >> child_pid)
+	{
+		children.push_back(child_pid);
+		pid_get_children_rec(child_pid, children);
+	}
+}
