@@ -31,8 +31,11 @@ def main():
     for wl_id, wl in enumerate(workloads):
         if isinstance(wl, str):
             wl = [wl]
-        process_intdata(wl, args.input_dir, args.output_dir, args.alone)
-        process_data(wl, args.input_dir, args.output_dir, args.alone)
+        try:
+            process_intdata(wl, args.input_dir, args.output_dir, args.alone)
+            process_data(wl, args.input_dir, args.output_dir, args.alone)
+        except Exception as e:
+            print("Error in {}: {}".format(wl, e))
 
 
 def process_intdata(workload, input_dir, output_dir, alone):
@@ -75,13 +78,22 @@ def process_data(workload, input_dir, output_dir, alone):
 def read_and_merge(files, index, alone):
     dfs = list()
     for f in files:
-        df = pd.read_table(f, sep=",")
+        try:
+            df = pd.read_table(f, sep=",")
+        except:
+            print("Warning: could not read '{}'".format(f))
+            continue
+
         df["progress"] = alone / df["interval"]
         df["slowdown"] = df["interval"] / alone
         df["stp"] = sum(df["progress"])
         df["antt"] = np.mean(df["slowdown"])
         df["unfairness"] = df["progress"].std() / df["progress"].mean()
         dfs.append(df)
+
+    if len(dfs) == 0:
+        raise Exception("No files could be read for the workload")
+
     dfs = pd.concat(dfs)
     dfs.set_index(index, inplace=True)
     groups = dfs.groupby(level=list(range(len(index))))
