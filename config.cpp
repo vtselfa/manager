@@ -270,7 +270,7 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 	for (size_t i = 0; i < tasks.size(); i++)
 	{
 		required = {"app"};
-		allowed  = {"max_instr", "max_restarts", "define", "initial_clos", "cpus"};
+		allowed  = {"max_instr", "max_restarts", "define", "initial_clos", "cpus", "batch"};
 		config_check_fields(tasks[i], required, allowed);
 
 		if (!tasks[i]["app"])
@@ -279,7 +279,7 @@ tasklist_t config_read_tasks(const YAML::Node &config)
 		const auto &app = tasks[i]["app"];
 
 		required = {"cmd"};
-		allowed  = {"name", "skel", "stdin", "stdout", "stderr", "batch"};
+		allowed  = {"name", "skel", "stdin", "stdout", "stderr"};
 		config_check_fields(app, required, allowed);
 
 		// Commandline and name
