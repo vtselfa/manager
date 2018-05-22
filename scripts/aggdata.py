@@ -4,6 +4,8 @@ import os
 import os.path as osp
 import pandas as pd
 import re
+import sys
+import traceback
 import yaml
 
 
@@ -36,6 +38,7 @@ def main():
             process_data(wl, args.input_dir, args.output_dir, args.alone)
         except Exception as e:
             print("Error in {}: {}".format(wl, e))
+            traceback.print_exc(file=sys.stdout)
 
 
 def process_intdata(workload, input_dir, output_dir, alone):
@@ -50,13 +53,18 @@ def process_intdata(workload, input_dir, output_dir, alone):
     dfs = read_and_merge(files, ["interval", "app"], alone)
 
     # Store csv
-    dfs.to_csv("{}/{}.csv".format(output_dir, wl_name))
+    wl_csv = "{}/{}.csv".format(output_dir, wl_name)
+    dfs.reset_index().to_csv(wl_csv, index=False)
 
     # Store a csv per app
     os.makedirs(osp.abspath("{}/{}".format(output_dir, wl_name)), exist_ok=True)
     for app, df in dfs.groupby(level=1):
         filename = "{}/{}/{}.csv".format(output_dir, wl_name, app)
-        df.to_csv(filename)
+        if len(workload) > 1:
+            df.reset_index().to_csv(filename, index=False)
+        # If there is only one app this file will be equal to the one for the workload, so just link them
+        else:
+            os.symlink("../{}.csv".format(wl_name), filename)
 
 
 def process_data(workload, input_dir, output_dir, alone):
