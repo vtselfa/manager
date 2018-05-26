@@ -1,4 +1,9 @@
 #include <linux/time64.h>
+#include <stdint.h>
+struct perf_ns_link_info {
+	uint64_t dev;
+	uint64_t ino;
+};
 
 #include "util/drv_configs.h"
 #include "util/stat.h"
@@ -257,7 +262,7 @@ struct perf_evlist* setup_events(const char *pid, const char *events)
 
 	if (perf_evlist__apply_filters(evsel_list, &counter))
 	{
-		error("failed to set filter \"%s\" on event %s with %d (%s)\n",
+		pr_err("failed to set filter \"%s\" on event %s with %d (%s)\n",
 			counter->filter, perf_evsel__name(counter), errno, strerror(errno));
 		exit(-1);
 	}
@@ -265,7 +270,7 @@ struct perf_evlist* setup_events(const char *pid, const char *events)
 	struct perf_evsel_config_term *err_term;
 	if (perf_evlist__apply_drv_configs(evsel_list, &counter, &err_term))
 	{
-		error("failed to set config \"%s\" on event %s with %d (%s)\n",
+		pr_err("failed to set config \"%s\" on event %s with %d (%s)\n",
 		      err_term->val.drv_cfg, perf_evsel__name(counter), errno, strerror(errno));
 		exit(-1);
 	}

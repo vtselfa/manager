@@ -1,4 +1,4 @@
-CPPFLAGS += -I. -I../linux/tools/include -I../linux/tools/lib -I../linux/tools/perf -I../linux/tools/perf/util
+CPPFLAGS += -I. -I../linux/tools/include -I../linux/tools/lib -I../linux/tools/perf -I../linux/tools/perf/util  -I../linux/arch/x86/include/generated -I../linux/arch/x86/include
 
 CFLAGS += -Wall -g
 CXXFLAGS += -Wall -g
